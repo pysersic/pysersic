@@ -134,7 +134,7 @@ class MAP():
     def quantiles(self,quantiles):
         return self.guide.quantiles(self.params,quantiles)
     def mean_model(self):
-        mean_params = self.quantiles([50.])
+        mean_params = self.quantiles([0.5])
         param_dict = {}
         for i in mean_params.keys():
             param_dict[i] = mean_params[i][0]
