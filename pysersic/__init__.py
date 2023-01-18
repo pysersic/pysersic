@@ -1,1 +1,1 @@
-from pysersic import *
+from .pysersic import *
