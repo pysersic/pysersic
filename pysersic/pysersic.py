@@ -111,7 +111,7 @@ class FitSersic():
 
     def plot_bestfit(self):
         d = self.data
-        bf = FitSersic.Sersic2D(self.xgrid,self.ygrid,**az.summary(self.inf_data).to_dict(),psf_fft=self.psf_fft)
+        bf = FitSersic.Sersic2D(self.xgrid,self.ygrid,**az.summary(self.inf_data)['mean'].to_dict(),psf_fft=self.psf_fft)
         fig, ax = plt.subplots(1,3,figsize=(10,3),constrained_layout=True)
         ax[0].imshow(d,cmap='gray',origin='lower',vmin=jnp.mean(d)-3*jnp.std(d),vmax=jnp.mean(d)+3*jnp.std(d))
         ax[1].imshow(bf,cmap='gray',origin='lower',vmin=jnp.mean(bf)-3*jnp.std(bf),vmax=jnp.mean(bf)+3*jnp.std(bf))
