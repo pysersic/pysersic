@@ -9,7 +9,7 @@ def autoprior(image):
     Derive automatic priors based on an input image.
     """
     image_sum = jnp.sum(image)
-    log_flux_prior = dist.Uniform(0,jnp.log10(image_sum))
+    log_flux_prior = dist.Uniform(0,jnp.log10(image_sum)+1.)
     im_shape = image.shape
     image_dim_min = jnp.min(jnp.array([image.shape[0],image.shape[1]])) 
     reff_prior = dist.Uniform(0.1,image_dim_min) 
