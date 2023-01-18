@@ -108,6 +108,9 @@ class FitSersic():
         return az.summary(self.inf_data)
 
 
+
+
+
     def optimize(self):
         optimizer = numpyro.optim.Adam(jax.example_libraries.optimizers.inverse_time_decay(1e-1, 500, 0.5, staircase=True) )
         guide = numpyro.infer.autoguide.AutoMultivariateNormal(self.model)
@@ -131,7 +134,7 @@ class MAP():
     def quantiles(self,quantiles):
         return self.guide.quantiles(self.params,quantiles)
     def mean_model(self):
-        mean_params = self.quantiles([50])
+        mean_params = self.quantiles([50.])
         param_dict = {}
         for i in mean_params.keys():
             param_dict[i] = mean_params[i][0]
