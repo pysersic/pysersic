@@ -26,7 +26,7 @@ class FitSersic():
         if data.shape != weight_map.shape:
             raise AssertionError('Weight map ndims must match input data')
         self.im_shape = data.shape
-        self.psf_shape = psf.shape
+        self.psf_shape = psf_map.shape
         f1d1 = jnp.fft.fftfreq(data.shape[0])
         f1d2 = jnp.fft.fftfreq(data.shape[1])
         fx,fy = jnp.meshgrid(f1d1,f1d2)
