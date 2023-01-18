@@ -63,7 +63,7 @@ class FitSersic():
         #setattr(self,parameter+'_prior',distribution)
         self.prior_dict[parameter] = distribution
     
-    def auotgenerate_priors(self):
+    def autogenerate_priors(self):
         prior_dict = autoprior(self.data)
         for i in prior_dict.keys():
             self.set_prior(i,prior_dict[i])
