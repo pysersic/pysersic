@@ -6,5 +6,5 @@ setuptools.setup(
     author="Imad Pasha & Tim Miller",
     author_email="imad.pasha@yale.edu",
     description="A Tool for fitting sersic profiles in python",
-    packages=["pysersic"]
+    packages=["pysersic","pysersic/utils"]
 )
