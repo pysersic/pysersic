@@ -6,6 +6,7 @@ from numpyro import distributions as dist, infer
 import numpyro
 import arviz as az
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1.axes_divider import make_axes_locatable
 from numpyro.infer import SVI, Trace_ELBO
 from jax import random
 
@@ -107,7 +108,17 @@ class FitSersic():
         self.inf_data = az.from_numpyro(self.sampler)
         return az.summary(self.inf_data)
 
-
+    def plot_bestfit(self):
+        d = self.data
+        bf = FitSersic.Sersic2D(self.xgrid,self.ygrid,**az.summary(self.inf_data).to_dict(),psf_fft=self.psf_fft)
+        fig, ax = plt.subplots(1,3,figsize=(10,3),constrained_layout=True)
+        ax[0].imshow(d,origin='lower',vmin=jnp.mean(d)-3*jnp.std(d),vmax=jnp.mean(d)+3*jnp.std(d))
+        ax[1].imshow(bf,origin='lower',vmin=jnp.mean(bf)-3*jnp.std(bf),vmax=jnp.mean(bf)+3*jnp.std(bf))
+        im2 = ax[2].imshow(d-bf,origin='lower',vmin=jnp.mean(d-bf)-3*jnp.std(d-bf),vmax=jnp.mean(d-bf)+3*jnp.std(d-bf))
+        ax_divider = make_axes_locatable(ax[2])
+        cax1 = ax_divider.append_axes("right", size="7%", pad="2%")
+        cb1 = fig.colorbar(im2, cax=cax1)
+        return fig, ax
 
 
 
@@ -118,7 +129,8 @@ class FitSersic():
         svi_result = svi.run(random.PRNGKey(1), 5000,image=self.data,image_error=self.weight_map)
         infodict = {'psf_fft':self.psf_fft,
                     'xgrid':self.xgrid,
-                    'ygrid':self.ygrid}
+                    'ygrid':self.ygrid,
+                    'data':self.data}
         res = MAP(result=svi_result,svi=svi,guide=guide,infodict=infodict)
         return res 
 
@@ -140,6 +152,19 @@ class MAP():
             param_dict[i] = mean_params[i][0]
         bf = FitSersic.Sersic2D(self.infodict['xgrid'],self.infodict['ygrid'],**param_dict,psf_fft=self.infodict['psf_fft'])
         return bf, param_dict
+
+    def plot_bestfit(self):
+        bf, param_dict = self.mean_model() 
+        d = self.infodict['data']
+        fig, ax = plt.subplots(1,3,figsize=(10,3),constrained_layout=True)
+        ax[0].imshow(d,origin='lower',vmin=jnp.mean(d)-3*jnp.std(d),vmax=jnp.mean(d)+3*jnp.std(d))
+        ax[1].imshow(bf,origin='lower',vmin=jnp.mean(bf)-3*jnp.std(bf),vmax=jnp.mean(bf)+3*jnp.std(bf))
+        im2 = ax[2].imshow(d-bf,origin='lower',vmin=jnp.mean(d-bf)-3*jnp.std(d-bf),vmax=jnp.mean(d-bf)+3*jnp.std(d-bf))
+        ax_divider = make_axes_locatable(ax[2])
+        cax1 = ax_divider.append_axes("right", size="7%", pad="2%")
+        cb1 = fig.colorbar(im2, cax=cax1)
+        return fig, ax
+
         
 
 
