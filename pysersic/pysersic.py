@@ -11,7 +11,7 @@ from numpyro.infer import SVI, Trace_ELBO
 from jax import random
 import corner
 
-
+from pysersic.utils import autoprior
 
 
 @jax.jit
@@ -63,6 +63,11 @@ class FitSersic():
         #setattr(self,parameter+'_prior',distribution)
         self.prior_dict[parameter] = distribution
     
+    def auotgenerate_priors(self):
+        prior_dict = autoprior(self.data)
+        for i in prior_dict.keys():
+            self.set_prior(i,prior_dict[i])
+
     
     def model(self,image_error=None,image=None,sky=None,):
         prior_dict = self.prior_dict
