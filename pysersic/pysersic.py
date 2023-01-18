@@ -108,12 +108,36 @@ class FitSersic():
         return az.summary(self.inf_data)
 
 
-    def MAP(self):
+    def optimize(self):
         optimizer = numpyro.optim.Adam(jax.example_libraries.optimizers.inverse_time_decay(1e-1, 500, 0.5, staircase=True) )
         guide = numpyro.infer.autoguide.AutoMultivariateNormal(self.model)
         svi = SVI(self.model, guide, optimizer, loss=Trace_ELBO(), )
         svi_result = svi.run(random.PRNGKey(1), 5000,image=self.data,image_error=self.weight_map)
-        self.params = svi_result.params  # get guide's parameters
-        self.svi = svi
-        self.guide = guide
-        self.quantiles = guide.quantiles(self.params, [0.5,0.03,0.97])
+        infodict = {'psf_fft':self.psf_fft,
+                    'xgrid':self.xgrid,
+                    'ygrid':self.ygrid}
+        res = MAP(result=svi_result,svi=svi,guide=guide,infodict=infodict)
+        return res 
+
+
+class MAP():
+    def __init__(self,result,svi,guide,infodict):
+        self.result = result
+        self.params = result.params 
+        self.svi = svi 
+        self.guide = guide 
+        self.infodict = infodict
+        
+    def quantiles(self,quantiles):
+        return self.guide.quantiles(self.params,quantiles)
+    def mean_model(self):
+        mean_params = self.quantiles([50])
+        param_dict = {}
+        for i in mean_params.keys():
+            param_dict[i] = mean_params[i][0]
+        bf = FitSersic.Sersic2D(self.infodict['xgrid'],self.infodict['ygrid'],**param_dict,psf_fft=self.infodict['psf_fft'])
+        return bf, param_dict
+        
+
+
+        
