@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1.axes_divider import make_axes_locatable
 from numpyro.infer import SVI, Trace_ELBO
 from jax import random
+import corner
 
 
 
@@ -112,13 +113,16 @@ class FitSersic():
         d = self.data
         bf = FitSersic.Sersic2D(self.xgrid,self.ygrid,**az.summary(self.inf_data).to_dict(),psf_fft=self.psf_fft)
         fig, ax = plt.subplots(1,3,figsize=(10,3),constrained_layout=True)
-        ax[0].imshow(d,origin='lower',vmin=jnp.mean(d)-3*jnp.std(d),vmax=jnp.mean(d)+3*jnp.std(d))
-        ax[1].imshow(bf,origin='lower',vmin=jnp.mean(bf)-3*jnp.std(bf),vmax=jnp.mean(bf)+3*jnp.std(bf))
-        im2 = ax[2].imshow(d-bf,origin='lower',vmin=jnp.mean(d-bf)-3*jnp.std(d-bf),vmax=jnp.mean(d-bf)+3*jnp.std(d-bf))
+        ax[0].imshow(d,cmap='gray',origin='lower',vmin=jnp.mean(d)-3*jnp.std(d),vmax=jnp.mean(d)+3*jnp.std(d))
+        ax[1].imshow(bf,cmap='gray',origin='lower',vmin=jnp.mean(bf)-3*jnp.std(bf),vmax=jnp.mean(bf)+3*jnp.std(bf))
+        im2 = ax[2].imshow(d-bf,cmap='seismic',origin='lower',vmin=jnp.mean(d-bf)-3*jnp.std(d-bf),vmax=jnp.mean(d-bf)+3*jnp.std(d-bf))
         ax_divider = make_axes_locatable(ax[2])
         cax1 = ax_divider.append_axes("right", size="7%", pad="2%")
         cb1 = fig.colorbar(im2, cax=cax1)
         return fig, ax
+    def corner(self):
+        return corner.corner(self.inf_data)
+
 
 
 
@@ -157,9 +161,9 @@ class MAP():
         bf, param_dict = self.mean_model() 
         d = self.infodict['data']
         fig, ax = plt.subplots(1,3,figsize=(10,3),constrained_layout=True)
-        ax[0].imshow(d,origin='lower',vmin=jnp.mean(d)-3*jnp.std(d),vmax=jnp.mean(d)+3*jnp.std(d))
-        ax[1].imshow(bf,origin='lower',vmin=jnp.mean(bf)-3*jnp.std(bf),vmax=jnp.mean(bf)+3*jnp.std(bf))
-        im2 = ax[2].imshow(d-bf,origin='lower',vmin=jnp.mean(d-bf)-3*jnp.std(d-bf),vmax=jnp.mean(d-bf)+3*jnp.std(d-bf))
+        ax[0].imshow(d,cmap='gray',origin='lower',vmin=jnp.mean(d)-3*jnp.std(d),vmax=jnp.mean(d)+3*jnp.std(d))
+        ax[1].imshow(bf,cmap='gray',origin='lower',vmin=jnp.mean(bf)-3*jnp.std(bf),vmax=jnp.mean(bf)+3*jnp.std(bf))
+        im2 = ax[2].imshow(d-bf,cmap='seismic',origin='lower',vmin=jnp.mean(d-bf)-3*jnp.std(d-bf),vmax=jnp.mean(d-bf)+3*jnp.std(d-bf))
         ax_divider = make_axes_locatable(ax[2])
         cax1 = ax_divider.append_axes("right", size="7%", pad="2%")
         cb1 = fig.colorbar(im2, cax=cax1)
