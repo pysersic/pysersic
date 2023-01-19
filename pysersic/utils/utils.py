@@ -47,20 +47,38 @@ def autoprior(image,verbose=False):
 
 
 class BatchPriors():
-    def __init__(self,catalog):
+    def __init__(self,catalog,pos_sigma=5.0,rpix_sigma=5.0,ellip_sigma=0.2,theta_sigma=jnp.pi/2,logflux_sigma=0.5):
         """
         Ingest a catalog-like data structure containing prior positions and parameters for multiple galaxies in a single image.
         The format of the catalog can be a `pandas.DataFrame`, `numpy` RecordArray, dictionary, or any other format so-long as 
         the following fields exist and can be directly indexed: 'X', 'Y', 'LOGFLUX', and 'R'. Optional additional fields include
-        'THETA' and 'ELLIP' -- if these are on hand they may be provided. If only some galaxies have these measured, the flag -99
-        can be used to indicate as such. All columns/fields must be the same length
+        'THETA' and 'ELLIP' -- if these are on hand they may be provided. Theta must be in radians. 
+        If only some galaxies have these measured, the flag -99.0 can be used to indicate as such. 
+        All columns/fields must be the same length.
+
+        Parameters
+        ----------
+        catalog: any
+            structured data containing accessible fields as described above. Must have a len(). 
+        pos_sigma: float, default: 5.0
+            sigma for a normally-distributed prior on central position x0, y0, in pixels.
+        rpix_sigma: float, default: 5.0
+            sigma for a normally-distributed prior on r_eff,  in pixels. 
+        ellip_sigma: float, default: 0.2
+            sigma for a (truncated) normally-distributed prior on ellipticity. 
+        theta_sigma: float, default: jnp.pi/2 
+            sigma for a normally-distributed prior on theta. 
+        logflux_sigma: float, default: 0.5
+            sigma for a normally-distributed prior on the log of the total flux.
+
+        
         """
         self.catalog = catalog 
-        self.pos_sigma = 5.0
-        self.rpix_sigma = 5.0 
-        self.ellip_sigma = 0.2
-        self.theta_sigma = jnp.pi/2.0
-        self.logflux_sigma = 0.5
+        self.pos_sigma = pos_sigma
+        self.rpix_sigma = rpix_sigma 
+        self.ellip_sigma = ellip_sigma
+        self.theta_sigma = theta_sigma
+        self.logflux_sigma = logflux_sigma
 
         self.parse_catalog()         
 
