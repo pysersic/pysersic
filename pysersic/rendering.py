@@ -1,12 +1,11 @@
 import jax
 from jax import jit
-from functools import partial
 import jax.numpy as jnp
 import numpy as np
 from scipy.special import comb
 from abc import abstractmethod
 
-@jax.jit
+@jit
 def conv_fft(image,psf_fft):
     img_fft = jnp.fft.rfft2(image)
     conv_fft = img_fft*psf_fft
@@ -16,12 +15,12 @@ def conv_fft(image,psf_fft):
 class BaseRenderer(object):
     def __init__(self, im_shape, pixel_PSF):
         self.im_shape = im_shape
-        self.pixel_PSF = jnp.array(pixel_PSF)
-        self.psf_shape = self.pixel_PSF.shape
+        self.pixel_PSF = pixel_PSF
+        self.psf_shape = jnp.shape(self.pixel_PSF)
 
-        x = jnp.arange(im_shape[0])
-        y = jnp.arange(im_shape[1])
-        self.X,self.Y = jnp.meshgrid(x,y)
+        self.x = jnp.arange(self.im_shape[0])
+        self.y = jnp.arange(self.im_shape[1])
+        self.X,self.Y = jnp.meshgrid(self.x,self.y)
         
         # Set up pre-FFTed PSF
         f1d1 = jnp.fft.rfftfreq(self.im_shape[0])
@@ -97,16 +96,15 @@ class PixelRenderer(BaseRenderer):
         
         im = jnp.zeros(self.im_shape)
         im = im.at[x_int - self.dx_ins_lo:x_int + self.dx_ins_hi, y_int - self.dy_ins_lo:y_int + self.dy_ins_hi].add(flux*shifted_psf)
-
-        return im 
+        return im
 
 class FourierRenderer(BaseRenderer):
-    def __init__(self, im_shape, pixel_PSF,frac_start = 0.02,frac_end = 12., n_sigma = 11, precision = 5):
+    def __init__(self, im_shape, pixel_PSF,frac_start = 0.02,frac_end = 12., n_sigma = 11, percision = 5):
         super().__init__(im_shape, pixel_PSF)
         self.frac_start = frac_start
         self.frac_end = frac_end
         self.n_sigma = n_sigma
-        self.percision = precision
+        self.percision = percision
 
         # Calculation of MoG representation of SersicProfiles based on lenstrometry implementation and Shajib (2019)
         # nodes and weights based on Fourier-Euler method
@@ -125,14 +123,12 @@ class FourierRenderer(BaseRenderer):
 
         self.etas = jnp.array( (-1.) ** kes * epsilons * 10. ** (self.percision / 3.) * 2. * np.sqrt(2*np.pi) )
         self.betas = jnp.array(betas)
-    
-    @partial(jit, static_argnums=0)
+
     def sersic1D(self, r,flux,re,n):
         bn = 1.9992*n - 0.3271
         Ie = flux / ( re*re* 2* jnp.pi*n * jnp.exp(bn + jax.scipy.special.gammaln(2*n) ) ) * bn**(2*n) 
         return Ie*jnp.exp ( -bn*( (r/re)**(1./n) - 1. ) )
     
-    @partial(jit, static_argnums=0)
     def get_sersic_mog(self,flux,re,n):
         sigma_start = re*self.frac_start
         sigma_end = re*self.frac_end
@@ -152,7 +148,6 @@ class FourierRenderer(BaseRenderer):
         return amps,sigmas
 
     #Slower than pixel version, not sure exactly the cause, maybe try lax.scan instead of newaxis
-    @partial(jit, static_argnums=0)
     def render_sersic(self,x_0,y_0, flux, r_eff, n,ellip, theta):
         amps,sigmas = self.get_sersic_mog(flux,r_eff,n)
 
@@ -168,7 +163,6 @@ class FourierRenderer(BaseRenderer):
 
         return gal_im
 
-    @partial(jit, static_argnums=0)
     def render_doublesersic(self, x_0, y_0, flux, f_1, r_eff_1, n_1, ellip_1, r_eff_2, n_2, ellip_2, theta):
         Ui = self.FX*jnp.cos(theta) + self.FY*jnp.sin(theta) 
         Vi = -1*self.FX*jnp.sin(theta) + self.FY*jnp.cos(theta) 
@@ -191,10 +185,8 @@ class FourierRenderer(BaseRenderer):
         gal_im = jnp.abs( jnp.fft.irfft2((Fgal_1 + Fgal_2)*self.PSF_fft) )
         return gal_im
     
-    @partial(jit, static_argnums=0)
     def render_pointsource(self, x_0, y_0, flux):
         j_jax = jax.lax.complex(0.,1.)
         in_exp = -1*j_jax*2*jnp.pi*self.FX*x_0 - 1*j_jax*2*jnp.pi*self.FY*y_0
         F_im = flux*jnp.exp(in_exp)
         return jnp.abs( jnp.fft.irfft2(F_im*self.PSF_fft) )
-

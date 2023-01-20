@@ -6,6 +6,7 @@ import numpyro
 import arviz as az
 
 from numpyro.infer import SVI, Trace_ELBO
+from numpyro.infer.initialization import init_to_median
 from jax import random
 
 
@@ -24,7 +25,7 @@ class FitSingle():
         else:
             self.sky_model = sky_model
 
-        self.renderer = renderer(data.shape, psf_map, **renderer_kwargs)
+        self.renderer = renderer(jnp.array(data.shape), jnp.array(psf_map), **renderer_kwargs)
 
         if profile == 'single':
             self.render_func = renderer.render_sersic
@@ -59,22 +60,17 @@ class FitSingle():
         def model():
             prior_dict = self.prior_dict
             #Need to have someway to change the parameters given different profiles
-            log_flux = numpyro.sample("log_flux",prior_dict['log_flux'])
-            flux = numpyro.deterministic("flux", jnp.power(10,log_flux))
-            
-            log_n = numpyro.sample("log_n",prior_dict['log_n'])
-            n = numpyro.deterministic("n", jnp.power(10,log_n))
-            
-            r_eff = numpyro.sample("r_eff",prior_dict['r_eff'])
-
-            ellip = numpyro.sample("ellip",prior_dict['ellip'])
-            theta = numpyro.sample("theta", prior_dict['theta'])
-            x_0 = numpyro.sample("x_0",prior_dict['x_0'])
-            y_0 = numpyro.sample("y_0",prior_dict['y_0'])
+            flux = numpyro.sample('flux', prior_dict['flux'])
+            n = numpyro.sample('n',prior_dict['n'])
+            r_eff = numpyro.sample('r_eff',prior_dict['r_eff'])
+            ellip = numpyro.sample('ellip',prior_dict['ellip'])
+            theta = numpyro.sample('theta',prior_dict['theta'])
+            x_0 = numpyro.sample('x_0',prior_dict['x_0'])
+            y_0 = numpyro.sample('y_0',prior_dict['y_0'])
 
             #collect params and render scene
             params = jnp.array([x_0,y_0,flux,r_eff,n, ellip, theta])
-            out = self.render_func(*params)
+            out = self.renderer.render_sersic(*params)
             
             if self.sky_model =='flat':
                 sky_back = numpyro.sample('sky0', dist.Normal(0, 1e-3))
@@ -93,46 +89,51 @@ class FitSingle():
     def injest_data(self, sampler = None, svi_res_dict = {}):
         
         if sampler is None and (svi_res_dict is None):
-            return AssertionError("Must supply trained guide or sampled sampler")
+            return AssertionError("Must svi results dictionary or sampled sampler")
 
         elif not sampler is None:
             self.az_data = az.from_numpyro(sampler)
-            #Do other things 
-
         else:
+            assert 'guide' in svi_res_dict.keys()
+            assert 'model' in svi_res_dict.keys()
+            assert 'svi_result' in svi_res_dict.keys()
 
-            #Write function to sample posterior from svi guide 
-            return NotImplementedError
-    
-    def sample(self,num_warmup=1000,
+            rkey = random.PRNGKey(5)
+            post_raw = svi_res_dict['guide'].sample_posterior(rkey, svi_res_dict['svi_result'].params, sample_shape = ((1000,)))
+            #Convert to arviz
+            post_dict = {}
+            for key in post_raw:
+                post_dict[key] = post_raw[key][jnp.newaxis,]
+            self.az_data = az.from_dict(post_dict)
+
+    def sample(self,
+                sampler_kwargs = dict(init_strategy=init_to_median, 
+                target_accept_prob = 0.9),
+                mcmc_kwargs = dict(num_warmup=1000,
                 num_samples=1000,
                 num_chains=2,
-                progress_bar=True):
+                progress_bar=True),       
+        ):
 
-        model = self.build_model()
+        model =  self.build_model()
         
-        self.sampler =infer.MCMC(
-                                infer.NUTS(model),
-                                num_warmup=num_warmup,
-                                num_samples=num_samples,
-                                num_chains=num_chains,
-                                progress_bar=progress_bar,
-                            )
+        self.sampler =infer.MCMC(infer.NUTS(model, **sampler_kwargs),**mcmc_kwargs)
         self.sampler.run(jax.random.PRNGKey(3))
+
         self.injest_data(sampler = self.sampler)
 
         return az.summary(self.az_data)
 
 
     def optimize(self):
-        optimizer = numpyro.optim.Adam(jax.example_libraries.optimizers.inverse_time_decay(1e-1, 500, 0.5, staircase=True) )
+        optimizer = numpyro.optim.Adam(jax.example_libraries.optimizers.inverse_time_decay(1e-1, 1000, 0.1, staircase=True) )
         
         model = self.build_model()
-        self.guide = numpyro.infer.autoguide.AutoMultivariateNormal(self.model)
+        guide = numpyro.infer.autoguide.AutoLaplaceApproximation(model)
         
-        svi = SVI(model, self.guide, optimizer, loss=Trace_ELBO(), )
-        svi_result = svi.run(random.PRNGKey(1), 5000)
+        svi = SVI(model, guide, optimizer, loss=Trace_ELBO(), )
+        svi_result = svi.run(random.PRNGKey(1), 3000)
         
-        #still need to write this function
-        self.injest_data()# need to write this part
+        self.svi_res_dict = dict(guide = guide, model = model, svi_result = svi_result)
+        self.injest_data(svi_res_dict= self.svi_res_dict)
         return az.summary(self.az_data)
