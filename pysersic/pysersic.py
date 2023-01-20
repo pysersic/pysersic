@@ -14,7 +14,7 @@ from pysersic.utils import autoprior
 
 
 class FitSingle():
-    def __init__(self,data,weight_map,psf_map,sky_model = None, profile = 'single', renderer = FourierRenderer, renderer_kwargs = {}):
+    def __init__(self,data,weight_map,psf_map,mask = None,sky_model = None, profile = 'single', renderer = FourierRenderer, renderer_kwargs = {}):
         # Assert weightmap shap is data shape
         if data.shape != weight_map.shape:
             raise AssertionError('Weight map ndims must match input data')
@@ -28,16 +28,20 @@ class FitSingle():
 
         if profile == 'single':
             self.render_func = renderer.render_sersic
-        elif profile == 'double':
-            self.render_func = renderer.render_doublesersic
-        elif profile == 'ps':
-            self.render_func = renderer.render_pointsource
+        #elif profile == 'double':
+        #    self.render_func = renderer.render_doublesersic
+        #elif profile == 'ps':
+        #    self.render_func = renderer.render_pointsource
         else:
-            raise AssertionError('profile must be one of: single,double or ps')
+            raise AssertionError('currently only single sersic supported')
 
         self.data = jnp.array(data) 
         self.weight_map = jnp.array(weight_map)
         self.rms_map = 1/jnp.sqrt(weight_map)
+        if mask is None:
+            self.mask = jnp.ones_like(self.data).astype(jnp.bool_)
+        else:
+            self.mask = jnp.logical_not(jnp.array(mask)).astype(jnp.bool_)
 
         self.prior_dict = {}
 
@@ -80,21 +84,23 @@ class FitSingle():
                 sky_x_sl = numpyro.sample('sky1', dist.Normal(0, 1e-3))
                 sky_y_sl = numpyro.sample('sky2', dist.Normal(0, 1e-3))
                 out  = out + sky_back + (self.renderer.X -  self.im_shape[1][0]/2.)*sky_x_sl + (self.renderer.Y - self.im_shape[1]/2.)*sky_y_sl
+           
+            with numpyro.handlers.mask(mask = self.mask):
+                numpyro.sample("obs", dist.Normal(out, self.rms_map), obs=self.data)
 
-            numpyro.sample("obs", dist.Normal(out, self.rms_map), obs=self.data)
-        
         return model
     
-    def injest_data(self, sampler = None, guide = None):
+    def injest_data(self, sampler = None, svi_res_dict = {}):
         
-        if sampler is None and guide is None:
+        if sampler is None and (svi_res_dict is None):
             return AssertionError("Must supply trained guide or sampled sampler")
 
-        elif guide is None:
+        elif not sampler is None:
             self.az_data = az.from_numpyro(sampler)
             #Do other things 
 
         else:
+
             #Write function to sample posterior from svi guide 
             return NotImplementedError
     
@@ -120,10 +126,13 @@ class FitSingle():
 
     def optimize(self):
         optimizer = numpyro.optim.Adam(jax.example_libraries.optimizers.inverse_time_decay(1e-1, 500, 0.5, staircase=True) )
-        guide = numpyro.infer.autoguide.AutoMultivariateNormal(self.model)
-        svi = SVI(self.model, guide, optimizer, loss=Trace_ELBO(), )
-        svi_result = svi.run(random.PRNGKey(1), 5000,image=self.data,image_error=self.weight_map)
+        
+        model = self.build_model()
+        self.guide = numpyro.infer.autoguide.AutoMultivariateNormal(self.model)
+        
+        svi = SVI(model, self.guide, optimizer, loss=Trace_ELBO(), )
+        svi_result = svi.run(random.PRNGKey(1), 5000)
         
         #still need to write this function
-        self.injest_data(guide = guide)
+        self.injest_data()# need to write this part
         return az.summary(self.az_data)
