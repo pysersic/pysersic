@@ -11,11 +11,10 @@ from jax import random
 
 
 from pysersic.rendering import *
-from pysersic.utils import autoprior
-
+from pysersic.utils import autoprior, sample_func_dict
 
 class FitSingle():
-    def __init__(self,data,weight_map,psf_map,mask = None,sky_model = None, profile = 'single', renderer = FourierRenderer, renderer_kwargs = {}):
+    def __init__(self,data,weight_map,psf_map,mask = None,sky_model = None, profile_type = 'sersic', renderer = FourierRenderer, renderer_kwargs = {}):
         # Assert weightmap shap is data shape
         if data.shape != weight_map.shape:
             raise AssertionError('Weight map ndims must match input data')
@@ -26,15 +25,11 @@ class FitSingle():
             self.sky_model = sky_model
 
         self.renderer = renderer(jnp.array(data.shape), jnp.array(psf_map), **renderer_kwargs)
-
-        if profile == 'single':
-            self.render_func = renderer.render_sersic
-        #elif profile == 'double':
-        #    self.render_func = renderer.render_doublesersic
-        #elif profile == 'ps':
-        #    self.render_func = renderer.render_pointsource
+        
+        if profile_type in ['sersic','doublesersic','pointsource']:
+            self.profile_type = profile_type
         else:
-            raise AssertionError('currently only single sersic supported')
+            raise AssertionError('Profile must be one of: sersic,doublesersic,pointsource')
 
         self.data = jnp.array(data) 
         self.weight_map = jnp.array(weight_map)
@@ -47,30 +42,22 @@ class FitSingle():
         self.prior_dict = {}
 
     def set_prior(self,parameter,distribution):
-        #setattr(self,parameter+'_prior',distribution)
         self.prior_dict[parameter] = distribution
     
     def autogenerate_priors(self):
-        prior_dict = autoprior(self.data)
+        prior_dict = autoprior(self.data, self.profile_type)
         for i in prior_dict.keys():
             self.set_prior(i,prior_dict[i])
     
 
-    def build_model(self,):
-        def model():
-            prior_dict = self.prior_dict
-            #Need to have someway to change the parameters given different profiles
-            flux = numpyro.sample('flux', prior_dict['flux'])
-            n = numpyro.sample('n',prior_dict['n'])
-            r_eff = numpyro.sample('r_eff',prior_dict['r_eff'])
-            ellip = numpyro.sample('ellip',prior_dict['ellip'])
-            theta = numpyro.sample('theta',prior_dict['theta'])
-            x_0 = numpyro.sample('x_0',prior_dict['x_0'])
-            y_0 = numpyro.sample('y_0',prior_dict['y_0'])
 
-            #collect params and render scene
-            params = jnp.array([x_0,y_0,flux,r_eff,n, ellip, theta])
-            out = self.renderer.render_sersic(*params)
+    def build_model(self,):
+
+        sample_func = sample_func_dict[self.profile_type]
+
+        def model():
+            params = sample_func(self.prior_dict)
+            out = self.renderer.render_source(params, self.profile_type)
             
             if self.sky_model =='flat':
                 sky_back = numpyro.sample('sky0', dist.Normal(0, 1e-3))
@@ -126,13 +113,13 @@ class FitSingle():
 
 
     def optimize(self):
-        optimizer = numpyro.optim.Adam(jax.example_libraries.optimizers.inverse_time_decay(1e-1, 1000, 0.1, staircase=True) )
+        optimizer = numpyro.optim.Adam(jax.example_libraries.optimizers.inverse_time_decay(1e-1, 1000, 0.5, staircase=True) )
         
         model = self.build_model()
-        guide = numpyro.infer.autoguide.AutoLaplaceApproximation(model)
+        guide = numpyro.infer.autoguide.AutoMultivariateNormal(model)
         
         svi = SVI(model, guide, optimizer, loss=Trace_ELBO(), )
-        svi_result = svi.run(random.PRNGKey(1), 3000)
+        svi_result = svi.run(random.PRNGKey(1), 5000)
         
         self.svi_res_dict = dict(guide = guide, model = model, svi_result = svi_result)
         self.injest_data(svi_res_dict= self.svi_res_dict)

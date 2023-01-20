@@ -42,6 +42,15 @@ class BaseRenderer(object):
     def render_pointsource(self,x_0,y_0, flux):
         return NotImplementedError
 
+    def render_source(self,params,profile_type):
+        if profile_type == 'sersic':
+            im = self.render_sersic(*params)
+        elif profile_type == 'doublesersic':
+            im = self.render_doublesersic(*params)
+        else:
+            im = self.render_pointsource(*params)
+        return im
+
 class PixelRenderer(BaseRenderer):
     #Basic implementation of Sersic renderering without any oversampling
     def __init__(self, im_shape, pixel_PSF):
