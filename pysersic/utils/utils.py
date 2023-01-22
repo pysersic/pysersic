@@ -11,6 +11,9 @@ def autoprior(image,profile_type):
 
     elif profile_type == 'pointsource':
         prior_dict = generate_pointsource_prior(image)
+   
+    elif profile_type in ['exp','dev']:
+        prior_dict = generate_exp_dev_prior(image)
     
     return prior_dict
 
@@ -51,6 +54,13 @@ def generate_sersic_prior(image, flux_guess = None, r_eff_guess = None, position
         'ellip': ellip_prior,
         'theta': theta_prior,
     }
+    return prior_dict 
+
+def generate_exp_dev_prior(image, flux_guess = None, r_eff_guess = None, position_guess = None):
+    
+    prior_dict = generate_sersic_prior(image, flux_guess = flux_guess, r_eff_guess = r_eff_guess, position_guess=position_guess)
+    prior_dict.pop('n')
+    
     return prior_dict 
 
 def generate_doublesersic_prior(image, flux_guess = None, r_eff_guess = None, position_guess = None):
@@ -225,7 +235,18 @@ class BatchPriors():
         return self.prior_dict
 
 
-
+def sample_sky(prior_dict, sky_type):
+    if sky_type is None:
+        params = 0
+    elif sky_type == 'flat':
+        sky0 = sample('sky0', prior_dict['sky0'])
+        params = sky0
+    else:
+        sky0 = sample('sky0', prior_dict['sky0'])
+        sky1 = sample('sky1', prior_dict['sky1'])
+        sky2 = sample('sky2', prior_dict['sky2'])
+        params = jnp.array([sky0,sky1,sky2])
+    return params
 
 def sample_sersic(prior_dict):
     flux = sample('flux', prior_dict['flux'])
@@ -240,6 +261,17 @@ def sample_sersic(prior_dict):
     params = jnp.array([x_0,y_0,flux,r_eff,n, ellip, theta])
     return params
 
+def sample_dev_exp(prior_dict):
+    flux = sample('flux', prior_dict['flux'])
+    r_eff = sample('r_eff',prior_dict['r_eff'])
+    ellip = sample('ellip',prior_dict['ellip'])
+    theta = sample('theta',prior_dict['theta'])
+    x_0 = sample('x_0',prior_dict['x_0'])
+    y_0 = sample('y_0',prior_dict['y_0'])
+
+    #collect params and render scene
+    params = jnp.array([x_0,y_0,flux,r_eff, ellip, theta])
+    return params
 def sample_doublesersic(prior_dict):
     flux = sample('flux', prior_dict['flux'])
     f_1 = sample('f_1', prior_dict['f_1'])
@@ -264,4 +296,4 @@ def sample_pointsource(prior_dict):
     params = jnp.array([x_0,y_0,flux,])
     return params
 
-sample_func_dict = {'sersic':sample_sersic,'doublesersic':sample_doublesersic, 'pointsource':sample_pointsource}
+sample_func_dict = {'sersic':sample_sersic,'doublesersic':sample_doublesersic, 'pointsource':sample_pointsource, 'exp':sample_dev_exp, 'dev':sample_dev_exp}

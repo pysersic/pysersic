@@ -11,7 +11,7 @@ from jax import random
 
 
 from pysersic.rendering import *
-from pysersic.utils import autoprior, sample_func_dict
+from pysersic.utils import autoprior, sample_func_dict, sample_sky
 
 class FitSingle():
     def __init__(self,data,weight_map,psf_map,mask = None,sky_model = None, profile_type = 'sersic', renderer = FourierRenderer, renderer_kwargs = {}):
@@ -26,7 +26,7 @@ class FitSingle():
 
         self.renderer = renderer(jnp.array(data.shape), jnp.array(psf_map), **renderer_kwargs)
         
-        if profile_type in ['sersic','doublesersic','pointsource']:
+        if profile_type in ['sersic','doublesersic','exp','dev','pointsource']:
             self.profile_type = profile_type
         else:
             raise AssertionError('Profile must be one of: sersic,doublesersic,pointsource')
@@ -48,6 +48,14 @@ class FitSingle():
         prior_dict = autoprior(self.data, self.profile_type)
         for i in prior_dict.keys():
             self.set_prior(i,prior_dict[i])
+        
+        #set sky priors
+        if self.sky_model == 'flat':
+            self.set_prior('sky0',  dist.Normal(0, 1e-4))
+        elif self.sky_model == 'tilted-plane':
+            self.set_prior('sky0',  dist.Normal(0, 1e-4))
+            self.set_prior('sky1',  dist.Normal(0, 1e-6))
+            self.set_prior('sky2',  dist.Normal(0, 1e-6))
     
 
 
@@ -58,18 +66,14 @@ class FitSingle():
         def model():
             params = sample_func(self.prior_dict)
             out = self.renderer.render_source(params, self.profile_type)
+
+            sky_params = sample_sky(self.prior_dict, self.sky_model)
+            sky = self.renderer.render_sky(sky_params, self.sky_model)
+
+            obs = out + sky
             
-            if self.sky_model =='flat':
-                sky_back = numpyro.sample('sky0', dist.Normal(0, 1e-3))
-                out = out + sky_back
-            if self.sky_model =='tilted_plane':
-                sky_back = numpyro.sample('sky0', dist.Normal(0, 1e-3))
-                sky_x_sl = numpyro.sample('sky1', dist.Normal(0, 1e-3))
-                sky_y_sl = numpyro.sample('sky2', dist.Normal(0, 1e-3))
-                out  = out + sky_back + (self.renderer.X -  self.im_shape[1][0]/2.)*sky_x_sl + (self.renderer.Y - self.im_shape[1]/2.)*sky_y_sl
-           
             with numpyro.handlers.mask(mask = self.mask):
-                numpyro.sample("obs", dist.Normal(out, self.rms_map), obs=self.data)
+                numpyro.sample("obs", dist.Normal(obs, self.rms_map), obs=self.data)
 
         return model
     
