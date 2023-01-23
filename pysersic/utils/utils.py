@@ -1,5 +1,7 @@
 
 from numpyro import distributions as dist, sample
+from numpyro.handlers import reparam
+from numpyro.infer.reparam import TransformReparam
 import jax.numpy as jnp 
 
 def autoprior(image,profile_type):
@@ -30,7 +32,7 @@ def generate_sersic_prior(image, flux_guess = None, r_eff_guess = None, position
     image_dim_min = jnp.min(jnp.array([image.shape[0],image.shape[1]])) 
     if r_eff_guess is None:
         r_eff_guess = image_dim_min/10
-    reff_prior = dist.TruncatedNormal(loc =  r_eff_guess,scale =  r_eff_guess/3, low = 1,high = image_dim_min/4.0) 
+    reff_prior = dist.TruncatedNormal(loc =  r_eff_guess,scale =  r_eff_guess/3, low = 1,high = image_dim_min/4.0)
 
     ellip_prior = dist.Uniform(0,0.8) 
     theta_prior = dist.Uniform(-jnp.pi/2.,jnp.pi/2.) 
@@ -61,7 +63,7 @@ def generate_exp_dev_prior(image, flux_guess = None, r_eff_guess = None, positio
     prior_dict = generate_sersic_prior(image, flux_guess = flux_guess, r_eff_guess = r_eff_guess, position_guess=position_guess)
     prior_dict.pop('n')
     
-    return prior_dict 
+    return prior_dict
 
 def generate_doublesersic_prior(image, flux_guess = None, r_eff_guess = None, position_guess = None):
     """
@@ -239,12 +241,16 @@ def sample_sky(prior_dict, sky_type):
     if sky_type is None:
         params = 0
     elif sky_type == 'flat':
-        sky0 = sample('sky0', prior_dict['sky0'])
+        reparam_config = {"sky0": TransformReparam()}
+        with reparam(config=reparam_config):
+            sky0 = sample('sky0', prior_dict['sky0'])
         params = sky0
     else:
-        sky0 = sample('sky0', prior_dict['sky0'])
-        sky1 = sample('sky1', prior_dict['sky1'])
-        sky2 = sample('sky2', prior_dict['sky2'])
+        reparam_config = {"sky0": TransformReparam(), 'sky1': TransformReparam(), 'sky2': TransformReparam()}
+        with reparam(config=reparam_config):
+            sky0 = sample('sky0', prior_dict['sky0'])
+            sky1 = sample('sky1', prior_dict['sky1'])
+            sky2 = sample('sky2', prior_dict['sky2'])
         params = jnp.array([sky0,sky1,sky2])
     return params
 
@@ -272,6 +278,7 @@ def sample_dev_exp(prior_dict):
     #collect params and render scene
     params = jnp.array([x_0,y_0,flux,r_eff, ellip, theta])
     return params
+
 def sample_doublesersic(prior_dict):
     flux = sample('flux', prior_dict['flux'])
     f_1 = sample('f_1', prior_dict['f_1'])

@@ -5,7 +5,7 @@ from numpyro import distributions as dist, infer
 import numpyro
 import arviz as az
 
-from numpyro.infer import SVI, Trace_ELBO
+from numpyro.infer import SVI, Trace_ELBO, RenyiELBO
 from numpyro.infer.initialization import init_to_median
 from jax import random
 
@@ -51,11 +51,24 @@ class FitSingle():
         
         #set sky priors
         if self.sky_model == 'flat':
-            self.set_prior('sky0',  dist.Normal(0, 1e-4))
+            self.set_prior('sky0',dist.TransformedDistribution(
+                                dist.Normal(),
+                                dist.transforms.AffineTransform(0.0,1e-4),)
+                            )
         elif self.sky_model == 'tilted-plane':
-            self.set_prior('sky0',  dist.Normal(0, 1e-4))
-            self.set_prior('sky1',  dist.Normal(0, 1e-6))
-            self.set_prior('sky2',  dist.Normal(0, 1e-6))
+            self.set_prior('sky0',  dist.TransformedDistribution(
+                                dist.Normal(),
+                                dist.transforms.AffineTransform(0.0,1e-4),)
+            )
+            self.set_prior('sky1',  dist.TransformedDistribution(
+                                dist.Normal(),
+                                dist.transforms.AffineTransform(0.0,1e-5),)
+            )
+
+            self.set_prior('sky2',dist.TransformedDistribution(
+                                dist.Normal(),
+                                dist.transforms.AffineTransform(0.0,1e-5),)
+            )
     
 
 
@@ -77,7 +90,7 @@ class FitSingle():
 
         return model
     
-    def injest_data(self, sampler = None, svi_res_dict = {}):
+    def injest_data(self, sampler = None, svi_res_dict = {},purge_extra = True):
         
         if sampler is None and (svi_res_dict is None):
             return AssertionError("Must svi results dictionary or sampled sampler")
@@ -97,6 +110,16 @@ class FitSingle():
                 post_dict[key] = post_raw[key][jnp.newaxis,]
             self.az_data = az.from_dict(post_dict)
 
+        if purge_extra:
+            var_names = list(self.az_data.posterior.to_dataframe().columns)
+            to_drop = []
+            for var in var_names:
+                if ('base' in var) or ('auto' in var):
+                    to_drop.append(var)
+
+            self.az_data = self.az_data.posterior.drop_vars(to_drop)
+
+        return az.summary(self.az_data)
     def sample(self,
                 sampler_kwargs = dict(init_strategy=init_to_median, 
                 target_accept_prob = 0.9),
@@ -111,20 +134,19 @@ class FitSingle():
         self.sampler =infer.MCMC(infer.NUTS(model, **sampler_kwargs),**mcmc_kwargs)
         self.sampler.run(jax.random.PRNGKey(3))
 
-        self.injest_data(sampler = self.sampler)
+        summary = self.injest_data(sampler = self.sampler)
 
-        return az.summary(self.az_data)
-
+        return summary
 
     def optimize(self):
-        optimizer = numpyro.optim.Adam(jax.example_libraries.optimizers.inverse_time_decay(1e-1, 1000, 0.5, staircase=True) )
+        optimizer = numpyro.optim.Adam(jax.example_libraries.optimizers.inverse_time_decay(1e-1, 1000, 10, staircase=True) )
         
         model = self.build_model()
         guide = numpyro.infer.autoguide.AutoMultivariateNormal(model)
         
-        svi = SVI(model, guide, optimizer, loss=Trace_ELBO(), )
+        svi = SVI(model, guide, optimizer, loss= RenyiELBO(num_particles=5), )
         svi_result = svi.run(random.PRNGKey(1), 5000)
         
         self.svi_res_dict = dict(guide = guide, model = model, svi_result = svi_result)
-        self.injest_data(svi_res_dict= self.svi_res_dict)
-        return az.summary(self.az_data)
+        summary = self.injest_data(svi_res_dict= self.svi_res_dict)
+        return summary
