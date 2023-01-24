@@ -24,7 +24,7 @@ class FitSingle():
         else:
             self.sky_model = sky_model
 
-        self.renderer = renderer(jnp.array(data.shape), jnp.array(psf_map), **renderer_kwargs)
+        self.renderer = renderer(data.shape, jnp.array(psf_map), **renderer_kwargs)
         
         if profile_type in ['sersic','doublesersic','exp','dev','pointsource']:
             self.profile_type = profile_type
@@ -126,26 +126,26 @@ class FitSingle():
                 mcmc_kwargs = dict(num_warmup=1000,
                 num_samples=1000,
                 num_chains=2,
-                progress_bar=True),       
+                progress_bar=True),
+                rkey = jax.random.PRNGKey(3)     
         ):
-
         model =  self.build_model()
         
         self.sampler =infer.MCMC(infer.NUTS(model, **sampler_kwargs),**mcmc_kwargs)
-        self.sampler.run(jax.random.PRNGKey(3))
+        self.sampler.run(rkey)
 
         summary = self.injest_data(sampler = self.sampler)
 
         return summary
 
-    def optimize(self):
-        optimizer = numpyro.optim.Adam(jax.example_libraries.optimizers.inverse_time_decay(1e-1, 1000, 10, staircase=True) )
+    def optimize(self, rkey = random.PRNGKey(1) ):
+        optimizer = numpyro.optim.Adam(jax.example_libraries.optimizers.inverse_time_decay(1e-1, 500, 5, staircase=True) )
         
         model = self.build_model()
         guide = numpyro.infer.autoguide.AutoMultivariateNormal(model)
         
         svi = SVI(model, guide, optimizer, loss= RenyiELBO(num_particles=5), )
-        svi_result = svi.run(random.PRNGKey(1), 5000)
+        svi_result = svi.run(rkey, 5000)
         
         self.svi_res_dict = dict(guide = guide, model = model, svi_result = svi_result)
         summary = self.injest_data(svi_res_dict= self.svi_res_dict)

@@ -15,7 +15,9 @@ class BaseRenderer(object):
         self.x = jnp.arange(self.im_shape[0])
         self.y = jnp.arange(self.im_shape[1])
         self.X,self.Y = jnp.meshgrid(self.x,self.y)
-        
+        self.x_mid = self.im_shape[0]/2. - 0.5
+        self.y_mid = self.im_shape[1]/2. - 0.5
+
         # Set up pre-FFTed PSF
         f1d1 = jnp.fft.rfftfreq(self.im_shape[0])
         f1d2 = jnp.fft.fftfreq(self.im_shape[1])
@@ -28,7 +30,7 @@ class BaseRenderer(object):
         return x
 
     def tilted_plane_sky(self, x):
-        return x[0] + (self.X -  self.im_shape[0]/2.)*x[1] + (self.Y - self.im_shape[1]/2.)*x[2]
+        return x[0] + (self.X -  self.x_mid)*x[1] + (self.Y - self.y_mid)*x[2]
     
     def render_sky(self,x, sky_type):
         if sky_type is None:
@@ -98,14 +100,14 @@ class PixelRenderer(BaseRenderer):
             x_min = -(self.X - x_0) * sin_theta + (self.Y - y_0) * cos_theta
             amplitude = flux*bn**(2*n) / ( jnp.exp(bn + jax.scipy.special.gammaln(2*n) ) *r_eff**2 *jnp.pi*2*n )
             z = jnp.sqrt((x_maj / a) ** 2 + (x_min / b) ** 2)
-            out = amplitude * jnp.exp(-bn * (z ** (1 / n) - 1))
+            out = amplitude * jnp.exp(-bn * (z ** (1 / n) - 1)) / (1.-ellip)
             return out
         self.render_int_sersic = jit(render_int_sersic)
 
         def conv(image):
             img_fft = jnp.fft.rfft2(image)
             conv_fft = img_fft*self.PSF_fft
-            conv_im = jnp.fft.irfft2(conv_fft)
+            conv_im = jnp.fft.irfft2(conv_fft, s=image.shape)
             return jnp.abs(conv_im)
         self.conv = jit(conv)
 
@@ -205,7 +207,7 @@ class FourierRenderer(BaseRenderer):
         self.render_pointsource_fourier = jit(render_pointsource_fourier)
 
         def conv_and_inv_FFT(F_im):
-            im = jnp.abs( jnp.fft.irfft2(F_im*self.PSF_fft) )
+            im = jnp.abs( jnp.fft.irfft2(F_im*self.PSF_fft, s= self.im_shape) )
             return im
         self.conv_and_inv_FFT = jit(conv_and_inv_FFT)
 
