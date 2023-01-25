@@ -7,6 +7,7 @@ import arviz as az
 
 from numpyro.infer import SVI, Trace_ELBO, RenyiELBO
 from numpyro.infer.initialization import init_to_median
+from numpyro.infer.reparam import TransformReparam
 from jax import random
 
 
@@ -73,9 +74,16 @@ class FitSingle():
 
 
     def build_model(self,):
-
+        #Sample correct variables
         sample_func = sample_func_dict[self.profile_type]
+        
+        #Set up and reparamaterization, 
+        reparam_dict = {}
+        for key in self.prior_dict.keys():
+            if hasattr(self.prior_dict[key], 'transforms'):
+                reparam_dict[key] = TransformReparam()
 
+        @numpyro.handlers.reparam(config = reparam_dict)
         def model():
             params = sample_func(self.prior_dict)
             out = self.renderer.render_source(params, self.profile_type)
@@ -120,11 +128,11 @@ class FitSingle():
             self.az_data = self.az_data.posterior.drop_vars(to_drop)
 
         return az.summary(self.az_data)
+
     def sample(self,
-                sampler_kwargs = dict(init_strategy=init_to_median, 
-                target_accept_prob = 0.9),
-                mcmc_kwargs = dict(num_warmup=1000,
-                num_samples=1000,
+                sampler_kwargs = {},
+                mcmc_kwargs = dict(num_warmup=500,
+                num_samples=500,
                 num_chains=2,
                 progress_bar=True),
                 rkey = jax.random.PRNGKey(3)     
@@ -144,9 +152,18 @@ class FitSingle():
         model = self.build_model()
         guide = numpyro.infer.autoguide.AutoMultivariateNormal(model)
         
-        svi = SVI(model, guide, optimizer, loss= RenyiELBO(num_particles=5), )
-        svi_result = svi.run(rkey, 5000)
+        svi = SVI(model, guide, optimizer, loss= Trace_ELBO(num_particles=2), )
+        svi_result = svi.run(rkey, 2000)
         
         self.svi_res_dict = dict(guide = guide, model = model, svi_result = svi_result)
         summary = self.injest_data(svi_res_dict= self.svi_res_dict)
         return summary
+
+
+
+class FitMulti(FitSingle):
+    def __init__(self,data,weight_map,psf_map,mask = None,sky_model = None, renderer = FourierRenderer, renderer_kwargs = {}):
+        super().__init__(data,weight_map,psf_map,mask = mask,sky_model = sky_model, renderer = renderer, renderer_kwargs = renderer_kwargs)
+
+        if type(self.renderer) != FourierRenderer:
+            raise AssertionError('Currently only FourierRenderer Supported for FitMulti')

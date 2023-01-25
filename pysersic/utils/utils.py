@@ -26,7 +26,9 @@ def generate_sersic_prior(image, flux_guess = None, r_eff_guess = None, position
 
     if flux_guess is None:
         flux_guess = jnp.sum(image)
-    flux_prior = dist.TruncatedNormal(scale = flux_guess/3, loc = flux_guess,low = 0 )
+    flux_prior = dist.TransformedDistribution(
+                                dist.Normal(),
+                                dist.transforms.AffineTransform(flux_guess,jnp.sqrt(flux_guess)),)
     
 
     image_dim_min = jnp.min(jnp.array([image.shape[0],image.shape[1]])) 
@@ -39,17 +41,21 @@ def generate_sersic_prior(image, flux_guess = None, r_eff_guess = None, position
     n_prior = dist.TruncatedNormal(loc = 2, scale= 0.5, low = 0.5, high=8)
 
     if position_guess is None:
-        x0_guess = image.shape[0]/2
-        y0_guess = image.shape[1]/2
+        xc_guess = image.shape[0]/2
+        yc_guess = image.shape[1]/2
     else:
-        x0_guess = position_guess[0]
-        y0_guess = position_guess[1]
-    x0_prior = dist.Normal(loc = x0_guess) 
-    y0_prior =  dist.Normal(loc = y0_guess)  
+        xc_guess = position_guess[0]
+        yc_guess = position_guess[1]
+    xc_prior = dist.TransformedDistribution(
+                                dist.Normal(),
+                                dist.transforms.AffineTransform(xc_guess,1) )
+    yc_prior =  dist.TransformedDistribution(
+                                dist.Normal(),
+                                dist.transforms.AffineTransform(yc_guess,1) )
 
     prior_dict = {
-        'x_0': x0_prior,
-        'y_0': y0_prior,
+        'xc': xc_prior,
+        'yc': yc_prior,
         'flux': flux_prior,
         'r_eff': reff_prior,
         'n': n_prior,
@@ -72,7 +78,9 @@ def generate_doublesersic_prior(image, flux_guess = None, r_eff_guess = None, po
 
     if flux_guess is None:
         flux_guess = jnp.sum(image)
-    flux_prior = dist.TruncatedNormal(scale = flux_guess/3, loc = flux_guess,low = 0 )
+    flux_prior = dist.TransformedDistribution(
+                                dist.Normal(),
+                                dist.transforms.AffineTransform(flux_guess,jnp.sqrt(flux_guess)),)
     frac_1 = dist.Uniform()
 
     image_dim_min = jnp.min(jnp.array([image.shape[0],image.shape[1]])) 
@@ -90,17 +98,22 @@ def generate_doublesersic_prior(image, flux_guess = None, r_eff_guess = None, po
     theta_prior = dist.Uniform(-jnp.pi/2.,jnp.pi/2.) 
     
     if position_guess is None:
-        x0_guess = image.shape[0]/2
-        y0_guess = image.shape[1]/2
+        xc_guess = image.shape[0]/2
+        yc_guess = image.shape[1]/2
     else:
-        x0_guess = position_guess[0]
-        y0_guess = position_guess[1]
-    x0_prior = dist.Normal(loc = x0_guess) 
-    y0_prior =  dist.Normal(loc = y0_guess)  
+        xc_guess = position_guess[0]
+        yc_guess = position_guess[1]
+
+    xc_prior = dist.TransformedDistribution(
+                                dist.Normal(),
+                                dist.transforms.AffineTransform(xc_guess,1) )
+    yc_prior =  dist.TransformedDistribution(
+                                dist.Normal(),
+                                dist.transforms.AffineTransform(yc_guess,1) )
 
     prior_dict = {
-        'x_0': x0_prior,
-        'y_0': y0_prior,
+        'xc': xc_prior,
+        'yc': yc_prior,
         'flux': flux_prior,
         'f_1':frac_1,
         'r_eff_1': reff_1_prior,
@@ -120,187 +133,122 @@ def generate_pointsource_prior(image, flux_guess = None,  position_guess = None)
 
     if flux_guess is None:
         flux_guess = jnp.sum(image)
-    flux_prior = dist.TruncatedNormal(scale = flux_guess/3, loc = flux_guess,low = 0 )
+    flux_prior = dist.TransformedDistribution(
+                                dist.Normal(),
+                                dist.transforms.AffineTransform(flux_guess,jnp.sqrt(flux_guess)),)
 
     if position_guess is None:
-        x0_guess = image.shape[0]/2
-        y0_guess = image.shape[1]/2
+        xc_guess = image.shape[0]/2
+        yc_guess = image.shape[1]/2
     else:
-        x0_guess = position_guess[0]
-        y0_guess = position_guess[1]
-    x0_prior = dist.Normal(loc = x0_guess) 
-    y0_prior =  dist.Normal(loc = y0_guess)  
+        xc_guess = position_guess[0]
+        yc_guess = position_guess[1]
+
+    xc_prior = dist.TransformedDistribution(
+                                dist.Normal(),
+                                dist.transforms.AffineTransform(xc_guess,0.5) )
+    yc_prior =  dist.TransformedDistribution(
+                                dist.Normal(),
+                                dist.transforms.AffineTransform(yc_guess,0.5) )
 
     prior_dict = {
-        'x_0': x0_prior,
-        'y_0': y0_prior,
+        'xc': xc_prior,
+        'yc': yc_prior,
         'flux': flux_prior,
     }
     return prior_dict 
 
+def multi_prior(image,catalog):
+    
+    all_priors = []
 
 
-class BatchPriors():
-    def __init__(self,catalog,pos_sigma=5.0,rpix_sigma=5.0,ellip_sigma=0.2,theta_sigma=jnp.pi/2,logflux_sigma=0.5):
-        """
-        Ingest a catalog-like data structure containing prior positions and parameters for multiple galaxies in a single image.
-        The format of the catalog can be a `pandas.DataFrame`, `numpy` RecordArray, dictionary, or any other format so-long as 
-        the following fields exist and can be directly indexed: 'X', 'Y', 'LOGFLUX', and 'R'. Optional additional fields include
-        'THETA' and 'ELLIP' -- if these are on hand they may be provided. Theta must be in radians. 
-        If only some galaxies have these measured, the flag -99.0 can be used to indicate as such. 
-        All columns/fields must be the same length.
+    for ind in range(len(catalog['x'])):
 
-        Parameters
-        ----------
-        catalog: any
-            structured data containing accessible fields as described above. Must have a len(). 
-        pos_sigma: float, default: 5.0
-            sigma for a normally-distributed prior on central position x0, y0, in pixels.
-        rpix_sigma: float, default: 5.0
-            sigma for a normally-distributed prior on r_eff,  in pixels. 
-        ellip_sigma: float, default: 0.2
-            sigma for a (truncated) normally-distributed prior on ellipticity. 
-        theta_sigma: float, default: jnp.pi/2 
-            sigma for a normally-distributed prior on theta. 
-        logflux_sigma: float, default: 0.5
-            sigma for a normally-distributed prior on the log of the total flux.
+        init = dict(flux_guess = catalog['flux'][ind], r_eff_guess = catalog['r'][ind], position_guess = (catalog['x'][ind],catalog['y'][ind]) )
 
+        if catalog['type'][ind] == 'sersic':
+            prior_dict = generate_sersic_prior(image, **init)
         
-        """
-        self.catalog = catalog 
-        self.pos_sigma = pos_sigma
-        self.rpix_sigma = rpix_sigma 
-        self.ellip_sigma = ellip_sigma
-        self.theta_sigma = theta_sigma
-        self.logflux_sigma = logflux_sigma
+        elif catalog['type'][ind] == 'doublesersic':
+            prior_dict = generate_doublesersic_prior(image, **init)
 
-        self.parse_catalog()         
+        elif catalog['type'][ind] == 'pointsource':
+            init.pop('r_eff_guess')
+            prior_dict = generate_pointsource_prior(image, **init)
 
+        elif catalog['type'][ind] in ['exp','dev']:
+            prior_dict = generate_exp_dev_prior(image, **init)
+    
+        source_dict = {}
+        for key in prior_dict.keys():
+            source_dict[key+f'_{ind:d}'] = prior_dict[key]
         
-
-    def parse_catalog(self):
-        self.prior_dict = {} 
-        try:
-            theta_exists = self.catalog['THETA']
-            theta_exists = True
-        except KeyError:
-            theta_exists=False
-        try:
-            ellip_exists = self.catalog['ELLIP']
-            ellip_exists = True
-        except KeyError:
-            ellip_exists = False
-        if theta_exists and ellip_exists:
-            for i in range(len(self.catalog)):
-                self.prior_dict[f'x0_{i}'] = dist.Normal(self.catalog['X'][i],self.pos_sigma)
-                self.prior_dict[f'y0_{i}'] = dist.Normal(self.catalog['Y'][i],self.pos_sigma)
-                self.prior_dict[f'log_flux_{i}'] = dist.Normal(self.catalog['LOGFLUX'][i],self.logflux_sigma)
-                self.prior_dict[f'r_eff_{i}'] = dist.TruncatedNormal(self.catalog['R'][i], self.rpix_sigma,low=1) 
-                if self.catalog['THETA'][i] != -99.0:
-                    self.prior_dict[f'theta_{i}'] = dist.Normal(self.catalog['THETA'][i],self.theta_sigma)
-                else:
-                    self.prior_dict[f'theta_{i}'] = dist.Uniform(0,jnp.pi)
-                if self.catalog['ELLIP'][i] != -99.0:
-                    self.prior_dict[f'ellip_{i}'] = dist.TruncatedNormal(self.catalog['ELLIP'][i],self.ellip_sigma,low=0,high=1)
-                else:
-                    self.prior_dict[f'ellip_{i}'] = dist.Uniform(0,1)
-        elif theta_exists:
-            for i in range(len(self.catalog)):
-                self.prior_dict[f'x0_{i}'] = dist.Normal(self.catalog['X'][i],self.pos_sigma)
-                self.prior_dict[f'y0_{i}'] = dist.Normal(self.catalog['Y'][i],self.pos_sigma)
-                self.prior_dict[f'log_flux_{i}'] = dist.Normal(self.catalog['LOGFLUX'][i],self.logflux_sigma)
-                self.prior_dict[f'r_eff_{i}'] = dist.TruncatedNormal(self.catalog['R'][i], self.rpix_sigma,low=1) 
-                self.prior_dict[f'ellip_{i}'] = dist.Uniform(0,1)
-                if self.catalog['THETA'][i] != -99.0:
-                    self.prior_dict[f'theta_{i}'] = dist.Normal(self.catalog['THETA'][i],self.theta_sigma)
-                else:
-                    self.prior_dict[f'theta_{i}'] = dist.Uniform(0,jnp.pi)
-        elif ellip_exists: 
-            for i in range(len(self.catalog)):
-                self.prior_dict[f'x0_{i}'] = dist.Normal(self.catalog['X'][i],self.pos_sigma)
-                self.prior_dict[f'y0_{i}'] = dist.Normal(self.catalog['Y'][i],self.pos_sigma)
-                self.prior_dict[f'log_flux_{i}'] = dist.Normal(self.catalog['LOGFLUX'][i],self.logflux_sigma)
-                self.prior_dict[f'r_eff_{i}'] = dist.TruncatedNormal(self.catalog['R'][i], self.rpix_sigma,low=1) 
-                self.prior_dict[f'theta_{i}'] = dist.Uniform(0,jnp.pi)
-                if self.catalog['ELLIP'][i] != -99.0:
-                    self.prior_dict[f'ellip_{i}'] = dist.TruncatedNormal(self.catalog['ELLIP'][i],self.ellip_sigma,low=0,high=1)
-                else:
-                    self.prior_dict[f'ellip_{i}'] = dist.Uniform(0,1)
-        else:
-            for i in range(len(self.catalog)):
-                self.prior_dict[f'x0_{i}'] = dist.Normal(self.catalog['X'][i],self.pos_sigma)
-                self.prior_dict[f'y0_{i}'] = dist.Normal(self.catalog['Y'][i],self.pos_sigma)
-                self.prior_dict[f'log_flux_{i}'] = dist.Normal(self.catalog['LOGFLUX'][i],self.logflux_sigma)
-                self.prior_dict[f'r_eff_{i}'] = dist.TruncatedNormal(self.catalog['R'][i], self.rpix_sigma,low=1) 
-                self.prior_dict[f'ellip_{i}'] = dist.Uniform(0,1)
-                self.prior_dict[f'theta_{i}'] = dist.Uniform(0,jnp.pi)
-        return self.prior_dict
+        all_priors.append(source_dict)
+    return all_priors
 
 
 def sample_sky(prior_dict, sky_type):
     if sky_type is None:
         params = 0
     elif sky_type == 'flat':
-        reparam_config = {"sky0": TransformReparam()}
-        with reparam(config=reparam_config):
-            sky0 = sample('sky0', prior_dict['sky0'])
+
+        sky0 = sample('sky0', prior_dict['sky0'])
         params = sky0
     else:
-        reparam_config = {"sky0": TransformReparam(), 'sky1': TransformReparam(), 'sky2': TransformReparam()}
-        with reparam(config=reparam_config):
-            sky0 = sample('sky0', prior_dict['sky0'])
-            sky1 = sample('sky1', prior_dict['sky1'])
-            sky2 = sample('sky2', prior_dict['sky2'])
+        sky0 = sample('sky0', prior_dict['sky0'])
+        sky1 = sample('sky1', prior_dict['sky1'])
+        sky2 = sample('sky2', prior_dict['sky2'])
         params = jnp.array([sky0,sky1,sky2])
     return params
 
-def sample_sersic(prior_dict):
-    flux = sample('flux', prior_dict['flux'])
-    n = sample('n',prior_dict['n'])
-    r_eff = sample('r_eff',prior_dict['r_eff'])
-    ellip = sample('ellip',prior_dict['ellip'])
-    theta = sample('theta',prior_dict['theta'])
-    x_0 = sample('x_0',prior_dict['x_0'])
-    y_0 = sample('y_0',prior_dict['y_0'])
+def sample_sersic(prior_dict,add_on = ''):
+    flux = sample('flux'+add_on, prior_dict['flux'+add_on])
+    n = sample('n'+add_on,prior_dict['n'+add_on])
+    r_eff = sample('r_eff'+add_on,prior_dict['r_eff'+add_on])
+    ellip = sample('ellip'+add_on,prior_dict['ellip'+add_on])
+    theta = sample('theta'+add_on,prior_dict['theta'+add_on])
+    xc = sample('xc'+add_on,prior_dict['xc'+add_on])
+    yc = sample('yc'+add_on,prior_dict['yc'+add_on])
 
     #collect params and render scene
-    params = jnp.array([x_0,y_0,flux,r_eff,n, ellip, theta])
+    params = jnp.array([xc,yc,flux,r_eff,n, ellip, theta])
     return params
 
-def sample_dev_exp(prior_dict):
-    flux = sample('flux', prior_dict['flux'])
-    r_eff = sample('r_eff',prior_dict['r_eff'])
-    ellip = sample('ellip',prior_dict['ellip'])
-    theta = sample('theta',prior_dict['theta'])
-    x_0 = sample('x_0',prior_dict['x_0'])
-    y_0 = sample('y_0',prior_dict['y_0'])
+def sample_dev_exp(prior_dict,add_on = ''):
+    flux = sample('flux'+add_on, prior_dict['flux'+add_on])
+    r_eff = sample('r_eff'+add_on,prior_dict['r_eff'+add_on])
+    ellip = sample('ellip'+add_on,prior_dict['ellip'+add_on])
+    theta = sample('theta'+add_on,prior_dict['theta'+add_on])
+    xc = sample('xc'+add_on,prior_dict['xc'+add_on])
+    yc = sample('yc'+add_on,prior_dict['yc'+add_on])
 
     #collect params and render scene
-    params = jnp.array([x_0,y_0,flux,r_eff, ellip, theta])
+    params = jnp.array([xc,yc,flux,r_eff, ellip, theta])
     return params
 
-def sample_doublesersic(prior_dict):
-    flux = sample('flux', prior_dict['flux'])
-    f_1 = sample('f_1', prior_dict['f_1'])
-    n_1 = sample('n_1',prior_dict['n_1'])
-    r_eff_1 = sample('r_eff_1',prior_dict['r_eff_1'])
-    ellip_1 = sample('ellip_1',prior_dict['ellip_1'])
-    n_2 = sample('n_2',prior_dict['n_2'])
-    r_eff_2 = sample('r_eff_2',prior_dict['r_eff_2'])
-    ellip_2 = sample('ellip_2',prior_dict['ellip_2'])
-    theta = sample('theta',prior_dict['theta'])
-    x_0 = sample('x_0',prior_dict['x_0'])
-    y_0 = sample('y_0',prior_dict['y_0'])
+def sample_doublesersic(prior_dict,add_on = ''):
+    flux = sample('flux'+add_on, prior_dict['flux'+add_on])
+    f_1 = sample('f_1'+add_on, prior_dict['f_1'+add_on])
+    n_1 = sample('n_1'+add_on,prior_dict['n_1'+add_on])
+    r_eff_1 = sample('r_eff_1'+add_on,prior_dict['r_eff_1'+add_on])
+    ellip_1 = sample('ellip_1'+add_on,prior_dict['ellip_1'+add_on])
+    n_2 = sample('n_2'+add_on,prior_dict['n_2'+add_on])
+    r_eff_2 = sample('r_eff_2'+add_on,prior_dict['r_eff_2'+add_on])
+    ellip_2 = sample('ellip_2'+add_on,prior_dict['ellip_2'+add_on])
+    theta = sample('theta'+add_on,prior_dict['theta'])
+    xc = sample('xc'+add_on,prior_dict['xc'+add_on])
+    yc = sample('yc'+add_on,prior_dict['yc'+add_on])
 
-    params = jnp.array([x_0, y_0, flux, f_1, r_eff_1, n_1, ellip_1, r_eff_2, n_2, ellip_2, theta])
+    params = jnp.array([xc, yc, flux, f_1, r_eff_1, n_1, ellip_1, r_eff_2, n_2, ellip_2, theta])
     return params
 
-def sample_pointsource(prior_dict):
-    flux = sample('flux', prior_dict['flux'])
-    x_0 = sample('x_0',prior_dict['x_0'])
-    y_0 = sample('y_0',prior_dict['y_0'])
+def sample_pointsource(prior_dict,add_on = ''):
+    flux = sample('flux'+add_on, prior_dict['flux'+add_on])
+    xc = sample('xc'+add_on,prior_dict['xc'+add_on])
+    yc = sample('yc'+add_on,prior_dict['yc'+add_on])
 
-    params = jnp.array([x_0,y_0,flux,])
+    params = jnp.array([xc,yc,flux,])
     return params
 
 sample_func_dict = {'sersic':sample_sersic,'doublesersic':sample_doublesersic, 'pointsource':sample_pointsource, 'exp':sample_dev_exp, 'dev':sample_dev_exp}

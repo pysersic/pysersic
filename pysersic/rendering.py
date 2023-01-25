@@ -41,22 +41,22 @@ class BaseRenderer(object):
             return self.tilted_plane_sky(x)
 
     @abstractmethod
-    def render_sersic(self, x_0,y_0, flux, r_eff, n,ellip, theta):
+    def render_sersic(self, xc,yc, flux, r_eff, n,ellip, theta):
         return NotImplementedError
 
     @abstractmethod
-    def render_doublesersic(self,x_0,y_0, flux, f_1, r_eff_1,n_1, ellip_1, r_eff_2,n_2, ellip_2,theta):
+    def render_doublesersic(self,xc,yc, flux, f_1, r_eff_1,n_1, ellip_1, r_eff_2,n_2, ellip_2,theta):
         return NotImplementedError
 
     @abstractmethod
-    def render_pointsource(self,x_0,y_0, flux):
+    def render_pointsource(self,xc,yc, flux):
         return NotImplementedError
 
-    def render_exp(self, x_0,y_0, flux, r_eff,ellip, theta):
-        return self.render_sersic( x_0,y_0, flux, r_eff, 1.,ellip, theta)
+    def render_exp(self, xc,yc, flux, r_eff,ellip, theta):
+        return self.render_sersic(xc,yc, flux, r_eff, 1.,ellip, theta)
     
-    def render_dev(self, x_0,y_0, flux, r_eff,ellip, theta):
-        return self.render_sersic( x_0,y_0, flux, r_eff, 4.,ellip, theta)
+    def render_dev(self, xc,yc, flux, r_eff,ellip, theta):
+        return self.render_sersic(xc,yc, flux, r_eff, 4.,ellip, theta)
     
     def render_source(self,params,profile_type):
         if profile_type == 'sersic':
@@ -71,11 +71,26 @@ class BaseRenderer(object):
             im = self.render_pointsource(*params)
         return im
 
+
+@jax.jit
+def calc_sersic(X,Y,xc,yc, flux, r_eff, n,ellip, theta):
+    bn = 1.9992*n - 0.3271
+    a, b = r_eff, (1 - ellip) * r_eff
+    cos_theta, sin_theta = jnp.cos(theta), jnp.sin(theta)
+    x_maj = (X - xc) * cos_theta + (Y - yc) * sin_theta
+    x_min = -(X - xc) * sin_theta + (Y - yc) * cos_theta
+    amplitude = flux*bn**(2*n) / ( jnp.exp(bn + jax.scipy.special.gammaln(2*n) ) *r_eff**2 *jnp.pi*2*n )
+    z = jnp.sqrt((x_maj / a) ** 2 + (x_min / b) ** 2)
+    out = amplitude * jnp.exp(-bn * (z ** (1 / n) - 1)) / (1.-ellip)
+    return out
+
 class PixelRenderer(BaseRenderer):
     #Basic implementation of Sersic renderering without any oversampling
-    def __init__(self, im_shape, pixel_PSF):
+    def __init__(self, im_shape, pixel_PSF, os_pixel_size = 5, num_os = 8):
         super().__init__(im_shape, pixel_PSF)
-        
+        self.os_pixel_size = os_pixel_size
+        self.num_os = num_os
+
         #Set up quantities for injecting point sources
         self.X_psf,self.Y_psf = jnp.meshgrid(jnp.arange(self.psf_shape[0]), jnp.arange(self.psf_shape[1]))
         if self.psf_shape[0]%2 == 0:
@@ -92,48 +107,57 @@ class PixelRenderer(BaseRenderer):
             self.dy_ins_lo = jnp.floor(self.psf_shape[1]/2).astype(jnp.int32)
             self.dy_ins_hi = jnp.ceil(self.psf_shape[1]/2).astype(jnp.int32)
 
-        def render_int_sersic(x_0,y_0, flux, r_eff, n,ellip, theta):
-            bn = 1.9992*n - 0.3271
-            a, b = r_eff, (1 - ellip) * r_eff
-            cos_theta, sin_theta = jnp.cos(theta), jnp.sin(theta)
-            x_maj = (self.X - x_0) * cos_theta + (self.Y - y_0) * sin_theta
-            x_min = -(self.X - x_0) * sin_theta + (self.Y - y_0) * cos_theta
-            amplitude = flux*bn**(2*n) / ( jnp.exp(bn + jax.scipy.special.gammaln(2*n) ) *r_eff**2 *jnp.pi*2*n )
-            z = jnp.sqrt((x_maj / a) ** 2 + (x_min / b) ** 2)
-            out = amplitude * jnp.exp(-bn * (z ** (1 / n) - 1)) / (1.-ellip)
-            return out
-        self.render_int_sersic = jit(render_int_sersic)
-
         def conv(image):
             img_fft = jnp.fft.rfft2(image)
             conv_fft = img_fft*self.PSF_fft
-            conv_im = jnp.fft.irfft2(conv_fft, s=image.shape)
+            conv_im = jnp.fft.irfft2(conv_fft, s= self.im_shape)
             return jnp.abs(conv_im)
         self.conv = jit(conv)
 
-    def render_sersic(self,x_0,y_0, flux, r_eff, n,ellip, theta):
-        im_int = self.render_int_sersic(x_0,y_0, flux, r_eff, n,ellip, theta)
+        dx,w = np.polynomial.legendre.leggauss(self.num_os)
+        dx = dx/2.
+        self.dx_os,self.dy_os = jnp.meshgrid(dx,dx)
+
+        w1,w2 = jnp.meshgrid(w,w)
+        self.w_os = w1*w2/4.
+        
+        i_mid = int(self.im_shape[0]/2)
+        j_mid = int(self.im_shape[1]/2)
+
+        self.x_os_lo, self.x_os_hi = i_mid - self.os_pixel_size, i_mid + self.os_pixel_size
+        self.y_os_lo, self.y_os_hi = j_mid - self.os_pixel_size, j_mid + self.os_pixel_size
+
+        self.X_os = self.X[self.x_os_lo:self.x_os_hi ,self.y_os_lo:self.y_os_hi ,jnp.newaxis,jnp.newaxis] + self.dx_os
+        self.Y_os = self.Y[self.x_os_lo:self.x_os_hi ,self.y_os_lo:self.y_os_hi ,jnp.newaxis,jnp.newaxis] + self.dy_os
+
+        def render_int_sersic(xc,yc, flux, r_eff, n,ellip, theta):
+            im_no_os = calc_sersic(self.X,self.Y,xc,yc, flux, r_eff, n,ellip, theta)
+            
+            sub_im_os = calc_sersic(self.X_os,self.Y_os,xc,yc, flux, r_eff, n,ellip, theta)
+            sub_im_os = jnp.sum(sub_im_os*self.w_os, axis = (2,3))
+            
+            im = im_no_os.at[self.x_os_lo:self.x_os_hi ,self.y_os_lo:self.y_os_hi].set(sub_im_os)
+            return im
+        self.render_int_sersic = jit(render_int_sersic)
+
+    def render_sersic(self,xc,yc, flux, r_eff, n,ellip, theta):
+        im_int = self.render_int_sersic(xc,yc, flux, r_eff, n,ellip, theta)
         im = self.conv(im_int)
         return im
     
     #Currently not optimized for multiple sources as FFT is done every time, can change later.
-    def render_doublesersic(self, x_0, y_0, flux, f_1, r_eff_1, n_1, ellip_1, r_eff_2, n_2, ellip_2, theta):
-        im_int = self.render_int_sersic(x_0,y_0, flux*f_1, r_eff_1, n_1,ellip_1, theta) + self.render_int_sersic(x_0,y_0, flux*(1.-f_1), r_eff_2, n_2,ellip_2, theta)
+    def render_doublesersic(self, xc, yc, flux, f_1, r_eff_1, n_1, ellip_1, r_eff_2, n_2, ellip_2, theta):
+        im_int = self.render_int_sersic(xc,yc, flux*f_1, r_eff_1, n_1,ellip_1, theta) + self.render_int_sersic(xc,yc, flux*(1.-f_1), r_eff_2, n_2,ellip_2, theta)
         im = self.conv(im_int)
         return im
     
-    #Cannot jit due to dynamic array addition
-    def render_pointsource(self, x_0, y_0, flux):
-        x_int = jnp.round(x_0).astype(jnp.int32)
-        y_int = jnp.round(y_0).astype(jnp.int32)
-        dx = x_0 - x_int
-        dy = y_0 - y_int
+    def render_pointsource(self, xc, yc, flux):
+        dx = xc - self.psf_shape[0]/2.
+        dy = yc - self.psf_shape[1]/2.
 
-        shifted_psf = jax.scipy.ndimage.map_coordinates(self.pixel_PSF, [self.X_psf+dx,self.Y_psf+dy], order = 1, mode = 'constant')
-        
-        im = jnp.zeros(self.im_shape)
-        im = im.at[x_int - self.dx_ins_lo:x_int + self.dx_ins_hi, y_int - self.dy_ins_lo:y_int + self.dy_ins_hi].add(flux*shifted_psf)
-        return im
+        shifted_psf = jax.scipy.ndimage.map_coordinates(self.pixel_PSF*flux, [self.X-dx,self.Y-dy], order = 1, mode = 'constant')
+    
+        return shifted_psf
 
 @jit
 def sersic1D(r,flux,re,n):
@@ -187,21 +211,21 @@ class FourierRenderer(BaseRenderer):
             return amps,sigmas
         self.get_sersic_mog = jit(get_sersic_mog)
 
-        def render_sersic_mog_fourier(x_0,y_0, flux, r_eff, n,ellip, theta):
+        def render_sersic_mog_fourier(xc,yc, flux, r_eff, n,ellip, theta):
             amps,sigmas = self.get_sersic_mog(flux,r_eff,n)
 
             q = 1.-ellip
             Ui = self.FX*jnp.cos(theta) + self.FY*jnp.sin(theta) 
             Vi = -1*self.FX*jnp.sin(theta) + self.FY*jnp.cos(theta) 
 
-            in_exp = -1*(Ui*Ui + Vi*Vi*q*q)*(2*jnp.pi*jnp.pi*sigmas*sigmas)[:,jnp.newaxis,jnp.newaxis] - 1j*2*jnp.pi*self.FX*x_0 - 1j*2*jnp.pi*self.FY*y_0
+            in_exp = -1*(Ui*Ui + Vi*Vi*q*q)*(2*jnp.pi*jnp.pi*sigmas*sigmas)[:,jnp.newaxis,jnp.newaxis] - 1j*2*jnp.pi*self.FX*xc - 1j*2*jnp.pi*self.FY*yc
             Fgal_comp = amps[:,jnp.newaxis,jnp.newaxis]*jnp.exp(in_exp)
             Fgal = jnp.sum(Fgal_comp, axis = 0)
             return Fgal
         self.render_sersic_mog_fourier = jit(render_sersic_mog_fourier)
 
-        def render_pointsource_fourier(x_0, y_0, flux):
-            in_exp = -1j*2*jnp.pi*self.FX*x_0 - 1j*2*jnp.pi*self.FY*y_0
+        def render_pointsource_fourier(xc, yc, flux):
+            in_exp = -1j*2*jnp.pi*self.FX*xc - 1j*2*jnp.pi*self.FY*yc
             F_im = flux*jnp.exp(in_exp)
             return F_im
         self.render_pointsource_fourier = jit(render_pointsource_fourier)
@@ -212,18 +236,42 @@ class FourierRenderer(BaseRenderer):
         self.conv_and_inv_FFT = jit(conv_and_inv_FFT)
 
     #Slower than pixel version, not sure exactly the cause, maybe try lax.scan instead of newaxis
-    def render_sersic(self,x_0,y_0, flux, r_eff, n,ellip, theta):
-        F_im = self.render_sersic_mog_fourier(x_0,y_0, flux, r_eff, n,ellip, theta)
+    def render_sersic(self,xc,yc, flux, r_eff, n,ellip, theta):
+        F_im = self.render_sersic_mog_fourier(xc,yc, flux, r_eff, n,ellip, theta)
         im = self.conv_and_inv_FFT(F_im)
         return im
 
-    def render_doublesersic(self, x_0, y_0, flux, f_1, r_eff_1, n_1, ellip_1, r_eff_2, n_2, ellip_2, theta):
-        F_im_1 = self.render_sersic_mog_fourier(x_0,y_0, flux*f_1, r_eff_1, n_1,ellip_1, theta)
-        F_im_2 = self.render_sersic_mog_fourier(x_0,y_0, flux*(1.-f_1), r_eff_2, n_2,ellip_2, theta)
+    def render_doublesersic(self, xc, yc, flux, f_1, r_eff_1, n_1, ellip_1, r_eff_2, n_2, ellip_2, theta):
+        F_im_1 = self.render_sersic_mog_fourier(xc,yc, flux*f_1, r_eff_1, n_1,ellip_1, theta)
+        F_im_2 = self.render_sersic_mog_fourier(xc,yc, flux*(1.-f_1), r_eff_2, n_2,ellip_2, theta)
         im = self.conv_and_inv_FFT(F_im_1 + F_im_2)
         return im
     
-    def render_pointsource(self, x_0, y_0, flux):
-        F_im = self.render_pointsource_fourier(x_0,y_0,flux)
+    def render_pointsource(self, xc, yc, flux):
+        F_im = self.render_pointsource_fourier(xc,yc,flux)
         im = self.conv_and_inv_FFT(F_im)
+        return im
+
+    def render_multi(self, type_list, var_list):
+        
+        F_tot = jnp.zeros_like(self.FX)
+
+        for ind in range(len(type_list)):
+            if type_list[ind] == 'pointsource':
+                F_tot = F_tot + self.render_pointsource_fourier(*var_list[ind])
+            elif type_list[ind] == 'sersic':
+                F_tot = F_tot + self.render_sersic_mog_fourier(*var_list[ind])
+            elif type_list[ind] == 'exp':
+                xc,yc, flux, r_eff,ellip, theta = var_list[ind]
+                F_tot = F_tot + self.render_sersic_mog_fourier(xc,yc, flux, r_eff,1.,ellip, theta)
+            elif type_list[ind] == 'dev':
+                xc,yc, flux, r_eff,ellip, theta = var_list[ind]
+                F_tot = F_tot + self.render_sersic_mog_fourier(xc,yc, flux, r_eff,4.,ellip, theta)
+            elif type_list[ind] == 'doublesersic':
+                xc, yc, flux, f_1, r_eff_1, n_1, ellip_1, r_eff_2, n_2, ellip_2, theta = var_list[ind]
+                F_im_1 = self.render_sersic_mog_fourier(xc,yc, flux*f_1, r_eff_1, n_1,ellip_1, theta)
+                F_im_2 = self.render_sersic_mog_fourier(xc,yc, flux*(1.-f_1), r_eff_2, n_2,ellip_2, theta)
+                F_tot = F_tot + F_im_1 + F_im_2
+
+        im = self.conv_and_inv_FFT(F_tot)
         return im

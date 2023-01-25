@@ -8,7 +8,7 @@ psf = kern.array
 
 
 @pytest.mark.parametrize("renderer", [PixelRenderer,FourierRenderer])
-@pytest.mark.parametrize("pos", [(50,50),(50.5,50.5),(50.25,50.25) ,(50.,50.5),(50.5,50.)]) #test pixel interpolation
+@pytest.mark.parametrize("pos", [(50,50),(50.5,50.5),(50.25,50.25) ,(50.,50.5),(50.5,50.)]) 
 def test_point_source(renderer,pos):
     flux = 10.
     renderer_test = renderer((100,100), psf)
@@ -17,8 +17,8 @@ def test_point_source(renderer,pos):
 
 
 @pytest.mark.parametrize("renderer", [PixelRenderer,FourierRenderer])
-@pytest.mark.parametrize("pos", [(100.,100.),(100.5,100.5),]) #test half pixel interpolation
-@pytest.mark.parametrize("re", [10.,20.]) 
+@pytest.mark.parametrize("pos", [(100.,100.),(100.5,100.5),])
+@pytest.mark.parametrize("re", [5.,10.]) 
 @pytest.mark.parametrize("n", [1.5,2.5]) 
 @pytest.mark.parametrize("ellip", [0,0.5])
 @pytest.mark.parametrize("theta", [0,3.14/4.]) 
@@ -32,7 +32,7 @@ def test_sersic(renderer,pos,re,n,ellip,theta):
 @pytest.mark.parametrize("renderer", [PixelRenderer,FourierRenderer])
 @pytest.mark.parametrize("prof", ['exp','dev']) 
 @pytest.mark.parametrize("pos", [(100.,100.),(100.5,100.5),]) #test half pixel interpolation
-@pytest.mark.parametrize("re", [10.,20.]) 
+@pytest.mark.parametrize("re", [5.,10.]) 
 @pytest.mark.parametrize("ellip", [0,0.5])
 @pytest.mark.parametrize("theta", [0,3.14/4.]) 
 def test_exp_dev(renderer,prof,pos,re,ellip,theta):
