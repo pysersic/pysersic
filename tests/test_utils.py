@@ -6,11 +6,11 @@ from numpyro import distributions as dist
 
 
 prof_names = ['sersic','doublesersic','pointsource','exp','dev']
-prof_vars = [ ['x_0','y_0','flux','r_eff','n','ellip','theta'],
-        ['x_0','y_0','flux','f_1', 'r_eff_1','n_1','ellip_1', 'r_eff_2','n_2','ellip_2','theta'],
-        ['x_0','y_0','flux'],
-        ['x_0','y_0','flux','r_eff','ellip','theta'],
-        ['x_0','y_0','flux','r_eff','ellip','theta'],]
+prof_vars = [ ['xc','yc','flux','r_eff','n','ellip','theta'],
+        ['xc','yc','flux','f_1', 'r_eff_1','n_1','ellip_1', 'r_eff_2','n_2','ellip_2','theta'],
+        ['xc','yc','flux'],
+        ['xc','yc','flux','r_eff','ellip','theta'],
+        ['xc','yc','flux','r_eff','ellip','theta'],]
 
 @pytest.mark.parametrize('prof, var_names', zip(prof_names,prof_vars) )
 def test_prior_gen_and_sampling(prof, var_names):
@@ -49,6 +49,6 @@ def test_sky_sampling():
 
     with seed(rng_seed=1):
         params_3 = utils.sample_sky(sky_prior, 'tilted-plane')
-    assert params_3.shape == (3,) # Should be single value
+    assert params_3.shape == (3,) # Should be array of 3 values
 
     
