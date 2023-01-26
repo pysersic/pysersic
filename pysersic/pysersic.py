@@ -1,5 +1,6 @@
 import jax
 import jax.numpy as jnp
+import numpy as np
 from numpyro import distributions as dist, infer
 import numpyro
 import arviz as az
@@ -11,8 +12,9 @@ from numpyro.infer.reparam import TransformReparam
 from jax import random
 
 
-from pysersic.rendering import *
+from pysersic.rendering import PixelRenderer,FourierRenderer,HybridRenderer,BaseRenderer
 from pysersic.utils import autoprior,multi_prior, sample_func_dict, sample_sky
+
 
 from typing import Union, Optional, Callable
 ArrayLike = Union[np.array, jax.numpy.array]
@@ -29,7 +31,7 @@ class FitSingle():
         mask: Optional[ArrayLike] = None,
         sky_model: Optional[str] = None,
         profile_type: Optional[str] = 'sersic', 
-        renderer: Optional[BaseRenderer] =  FourierRenderer, 
+        renderer: Optional[BaseRenderer] =  HybridRenderer, 
         renderer_kwargs: Optional[dict] = {}) -> None:
         """Initialze FitSingle class
 
@@ -48,7 +50,7 @@ class FitSingle():
         profile_type : Optional[str], optional
             Must be one of: ['sersic','doublesersic','pointsource','exp','dev'] specifying how to paramaterize the source, default 'sersic'
         renderer : Optional[BaseRenderer], optional
-            The renderer to be used to generate model images, by default FourierRenderer
+            The renderer to be used to generate model images, by default HybridRenderer
         renderer_kwargs : Optional[dict], optional
             Any additional arguments to pass to the renderer, by default {}
         """
@@ -290,7 +292,7 @@ class FitMulti(FitSingle):
         psf_map: ArrayLike,
         mask: Optional[ArrayLike] = None,
         sky_model: Optional[str] = None,
-        renderer: Optional[BaseRenderer] =  FourierRenderer, 
+        renderer: Optional[BaseRenderer] =  HybridRenderer, 
         renderer_kwargs: Optional[dict] = {}) -> None:
         """Initialze FitMulti class
 
@@ -309,14 +311,14 @@ class FitMulti(FitSingle):
         profile_type : Optional[str], optional
             Must be one of: ['sersic','doublesersic','pointsource','exp','dev'] specifying how to paramaterize the source, default 'sersic'
         renderer : Optional[BaseRenderer], optional
-            The renderer to be used to generate model images, by default FourierRenderer
+            The renderer to be used to generate model images, by default HybridRenderer
         renderer_kwargs : Optional[dict], optional
             Any additional arguments to pass to the renderer, by default {}
         """
         super().__init__(data,weight_map,psf_map,mask = mask,sky_model = sky_model, renderer = renderer, renderer_kwargs = renderer_kwargs)
 
-        if type(self.renderer) != FourierRenderer:
-            raise AssertionError('Currently only FourierRenderer Supported for FitMulti')
+        if type(self.renderer) not in [FourierRenderer,HybridRenderer]:
+            raise AssertionError('Currently only FourierRenderer and HybridRenderer Supported for FitMulti')
     
     def autogenerate_priors(self,
         catalog: Union[pandas.DataFrame,dict, np.recarray]

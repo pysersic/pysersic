@@ -36,8 +36,8 @@ class BaseRenderer(object):
         f1d1 = jnp.fft.rfftfreq(self.im_shape[0])
         f1d2 = jnp.fft.fftfreq(self.im_shape[1])
         self.FX,self.FY = jnp.meshgrid(f1d1,f1d2)
-        fft_shift_arr_x = jnp.exp(jax.lax.complex(0.,-1.)*2.*3.1415*-1*self.psf_shape[0]/2.*self.FX)
-        fft_shift_arr_y = jnp.exp(jax.lax.complex(0.,-1.)*2.*3.1415*-1*self.psf_shape[1]/2.*self.FY)
+        fft_shift_arr_x = jnp.exp(jax.lax.complex(0.,-1.)*2.*3.1415*-1*(self.psf_shape[0]/2.-0.5)*self.FX)
+        fft_shift_arr_y = jnp.exp(jax.lax.complex(0.,-1.)*2.*3.1415*-1*(self.psf_shape[1]/2.-0.5)*self.FY)
         self.PSF_fft = jnp.fft.rfft2(self.pixel_PSF, s = self.im_shape)*fft_shift_arr_x*fft_shift_arr_y
 
     def flat_sky(self,x:float)-> float:
@@ -255,7 +255,7 @@ class PixelRenderer(BaseRenderer):
     def __init__(self, 
             im_shape: Iterable, 
             pixel_PSF: jax.numpy.array,
-            os_pixel_size: Optional[int]= 5, 
+            os_pixel_size: Optional[int]= 8, 
             num_os: Optional[int] = 8) -> None:
         """Initialize the PixelRenderer class
 
@@ -463,14 +463,89 @@ def sersic1D(
     Ie = flux / ( re*re* 2* jnp.pi*n * jnp.exp(bn + jax.scipy.special.gammaln(2*n) ) ) * bn**(2*n) 
     return Ie*jnp.exp ( -bn*( (r/re)**(1./n) - 1. ) )
 
+
+@jax.jit
+def render_gaussian_fourier(FX: jax.numpy.array,
+        FY: jax.numpy.array,
+        amps: jax.numpy.array,
+        sigmas: jax.numpy.array,
+        xc: float,
+        yc: float, 
+        theta: float,
+        q: float)-> jax.numpy.array:
+    """Render Gaussian components in the Fourier domain
+
+    Parameters
+    ----------
+    FX : jax.numpy.array
+        X frequency positions to evaluate
+    FY : jax.numpy.array
+        Y frequency positions to evaluate
+    amps : jax.numpy.array
+        Amplitudes of each component
+    sigmas : jax.numpy.array
+        widths of each component
+    xc : float
+        Central x position
+    yc : float
+        Central y position
+    theta : float
+        position angle
+    q : float
+        Axis ratio
+
+    Returns
+    -------
+    jax.numpy.array
+        Sum of components evaluated at FX and FY
+    """
+    Ui = FX*jnp.cos(theta) + FY*jnp.sin(theta) 
+    Vi = -1*FX*jnp.sin(theta) + FY*jnp.cos(theta) 
+
+    in_exp = -1*(Ui*Ui + Vi*Vi*q*q)*(2*jnp.pi*jnp.pi*sigmas*sigmas)[:,jnp.newaxis,jnp.newaxis] - 1j*2*jnp.pi*FX*xc - 1j*2*jnp.pi*FY*yc
+    Fgal_comp = amps[:,jnp.newaxis,jnp.newaxis]*jnp.exp(in_exp)
+    Fgal = jnp.sum(Fgal_comp, axis = 0)
+    return Fgal
+
+@jax.jit
+def render_pointsource_fourier(FX: jax.numpy.array,
+        FY: jax.numpy.array,
+        xc: float,
+        yc: float, 
+        flux: float)-> jax.numpy.array:
+    """Render a point source in the Fourier domain
+
+    Parameters
+    ----------
+    FX : jax.numpy.array
+        X frequency positions to evaluate
+    FY : jax.numpy.array
+        Y frequency positions to evaluate
+    xc : float
+        Central x position
+    yc : float
+        Central y position
+    flux : float
+        Total flux of source
+
+    Returns
+    -------
+    jax.numpy.array
+        Point source evaluated at FX FY
+    """
+    in_exp = -1j*2*jnp.pi*FX*xc - 1j*2*jnp.pi*FY*yc
+    F_im = flux*jnp.exp(in_exp)
+    return F_im
+
 class FourierRenderer(BaseRenderer):
-    """Class to render sources based on rendering them in Fourier space. Sersic profiles are modeled as a series of Gaussian following Shajib (2019)
+    """
+    Class to render sources based on rendering them in Fourier space. Sersic profiles are modeled as a series of Gaussian following Shajib (2019)  and the implementation in lenstrometry
     """
     def __init__(self, 
             im_shape: Iterable, 
             pixel_PSF: jax.numpy.array,
             frac_start: Optional[float] = 0.02,
-            frac_end: Optional[float] = 8., 
+            frac_end: Optional[float] = 10., 
             n_sigma: Optional[int] = 11, 
             percision: Optional[int] = 5)-> None:
         """Initialize a Fourier renderer class
@@ -496,9 +571,7 @@ class FourierRenderer(BaseRenderer):
         self.n_sigma = n_sigma
         self.percision = percision
 
-        # Calculation of MoG representation of SersicProfiles based on lenstrometry implementation and Shajib (2019)
-        # nodes and weights based on Fourier-Euler method
-        # for details Abate & Whitt (2006)
+        # Calculation of MoG representation of Sersic Profiles based on lenstrometry implementation and Shajib (2019)
         kes = np.arange(2 * self.percision + 1)
         betas = np.sqrt(2 * self.percision * np.log(10) / 3. + 2. * 1j * np.pi * kes)
         epsilons = np.zeros(2 * self.percision + 1)
@@ -536,22 +609,10 @@ class FourierRenderer(BaseRenderer):
 
         def render_sersic_mog_fourier(xc,yc, flux, r_eff, n,ellip, theta):
             amps,sigmas = self.get_sersic_mog(flux,r_eff,n)
-
             q = 1.-ellip
-            Ui = self.FX*jnp.cos(theta) + self.FY*jnp.sin(theta) 
-            Vi = -1*self.FX*jnp.sin(theta) + self.FY*jnp.cos(theta) 
-
-            in_exp = -1*(Ui*Ui + Vi*Vi*q*q)*(2*jnp.pi*jnp.pi*sigmas*sigmas)[:,jnp.newaxis,jnp.newaxis] - 1j*2*jnp.pi*self.FX*xc - 1j*2*jnp.pi*self.FY*yc
-            Fgal_comp = amps[:,jnp.newaxis,jnp.newaxis]*jnp.exp(in_exp)
-            Fgal = jnp.sum(Fgal_comp, axis = 0)
+            Fgal = render_gaussian_fourier(self.FX,self.FY, amps,sigmas,xc,yc, theta,q)
             return Fgal
         self.render_sersic_mog_fourier = jit(render_sersic_mog_fourier)
-
-        def render_pointsource_fourier(xc, yc, flux):
-            in_exp = -1j*2*jnp.pi*self.FX*xc - 1j*2*jnp.pi*self.FY*yc
-            F_im = flux*jnp.exp(in_exp)
-            return F_im
-        self.render_pointsource_fourier = jit(render_pointsource_fourier)
 
         def conv_and_inv_FFT(F_im):
             im = jnp.abs( jnp.fft.irfft2(F_im*self.PSF_fft, s= self.im_shape) )
@@ -665,7 +726,7 @@ class FourierRenderer(BaseRenderer):
         jax.numpy.array
             rendered pointsource model
         """
-        F_im = self.render_pointsource_fourier(xc,yc,flux)
+        F_im = render_pointsource_fourier(self.FX,self.FY,xc,yc,flux)
         im = self.conv_and_inv_FFT(F_im)
         return im
 
@@ -691,7 +752,7 @@ class FourierRenderer(BaseRenderer):
 
         for ind in range(len(type_list)):
             if type_list[ind] == 'pointsource':
-                F_tot = F_tot + self.render_pointsource_fourier(*var_list[ind])
+                F_tot = F_tot + render_pointsource_fourier(self.FX,self.FY,xc,yc,flux)
             elif type_list[ind] == 'sersic':
                 F_tot = F_tot + self.render_sersic_mog_fourier(*var_list[ind])
             elif type_list[ind] == 'exp':
@@ -707,4 +768,310 @@ class FourierRenderer(BaseRenderer):
                 F_tot = F_tot + F_im_1 + F_im_2
 
         im = self.conv_and_inv_FFT(F_tot)
+        return im
+
+@jax.jit
+def render_gaussian_pixel(X: jax.numpy.array,
+        Y: jax.numpy.array,
+        amps: jax.numpy.array,
+        sigmas: jax.numpy.array,
+        xc: float,
+        yc: float, 
+        theta: float,
+        q: Union[float,jax.numpy.array])-> jax.numpy.array:
+    """Render Gaussian components in pixel space
+
+    Parameters
+    ----------
+    FX : jax.numpy.array
+        X positions to evaluate
+    FY : jax.numpy.array
+        Y positions to evaluate
+    amps : jax.numpy.array
+        Amplitudes of each component
+    sigmas : jax.numpy.array
+        widths of each component
+    xc : float
+        Central x position
+    yc : float
+        Central y position
+    theta : float
+        position angle
+    q : Union[float,jax.numpy.array]
+        Axis ratio
+
+    Returns
+    -------
+    jax.numpy.array
+        Sum of components evaluated at X and Y
+    """
+    X_bar = X - xc
+    Y_bar = Y - yc
+
+    Xi = X_bar*jnp.cos(theta) + Y_bar*jnp.sin(theta) 
+    Yi = -1*X_bar*jnp.sin(theta) + Y_bar*jnp.cos(theta) 
+
+    in_exp = -1*(Xi*Xi + Yi*Yi/(q*q)[:,jnp.newaxis,jnp.newaxis] )/ (2*sigmas*sigmas)[:,jnp.newaxis,jnp.newaxis]
+    im_comp = (amps/(2*jnp.pi*sigmas*sigmas*q))[:,jnp.newaxis,jnp.newaxis]*jnp.exp(in_exp)
+    im = jnp.sum(im_comp, axis = 0)
+    return im
+
+
+class HybridRenderer(BaseRenderer):
+    """
+    Class to render sources based on the hybrid rendering scheme introduced in Lang (2020). Sersic profiles are modeled as a series of Gaussian following Shajib (2019) and the implementation in lenstrometry
+    """
+    def __init__(self, 
+            im_shape: Iterable, 
+            pixel_PSF: jax.numpy.array,
+            frac_start: Optional[float] = 0.02,
+            frac_end: Optional[float] = 10., 
+            n_sigma: Optional[int] = 11, 
+            num_pixel_render: Optional[int] = 4,
+            percision: Optional[int] = 5)-> None:
+        """Initialize a  HyrbridRenderer class
+
+        Parameters
+        ----------
+        im_shape : Iterable
+            Tuple or list containing the shape of the desired output
+        pixel_PSF : jax.numpy.array
+            Pixelized version of the PSF
+        frac_start : Optional[float], optional
+            Fraction of r_eff for the smallest Gaussian component, by default 0.02
+        frac_end : Optional[float], optional
+            Fraction of r_eff for the largest Gaussian component, by default 12.
+        n_sigma : Optional[int], optional
+            Number of Gaussian Components, by default 11
+        num_pixel_Render : Optional[int], optional
+            Numeber of components to render in pixel space, counts back from largest component
+        percision : Optional[int], optional
+            percision value used in calculating Gaussian components, see Shajib (2019) for more details, by default 5
+        """
+        super().__init__(im_shape, pixel_PSF)
+        self.frac_start = frac_start
+        self.frac_end = frac_end
+        self.n_sigma = n_sigma
+        self.percision = percision
+        self.num_pixel_render = num_pixel_render
+        self.w_real = jnp.arange(self.n_sigma - self.num_pixel_render, self.n_sigma)
+        self.w_fourier = jnp.arange(self.n_sigma - self.num_pixel_render)
+
+        psf_X,psf_Y = jnp.meshgrid(jnp.arange(self.psf_shape[0]),jnp.arange(self.psf_shape[1]))
+        sig_x = jnp.sqrt( (self.pixel_PSF*(psf_X)**2).sum()/self.pixel_PSF.sum() - psf_X.mean()**2 )
+        sig_y = jnp.sqrt( (self.pixel_PSF*(psf_Y)**2).sum()/self.pixel_PSF.sum() - psf_Y.mean()**2 )
+        self.sig_psf_approx = 0.5*(sig_x + sig_y)
+
+        # Calculation of MoG representation of Sersic Profiles based on lenstrometry implementation and Shajib (2019)
+        kes = np.arange(2 * self.percision + 1)
+        betas = np.sqrt(2 * self.percision * np.log(10) / 3. + 2. * 1j * np.pi * kes)
+        epsilons = np.zeros(2 * self.percision + 1)
+
+        epsilons[0] = 0.5
+        epsilons[1:self.percision + 1] = 1.
+        epsilons[-1] = 1 / 2. ** self.percision
+
+        for k in range(1, self.percision):
+            epsilons[2 * self.percision - k] = epsilons[2 * self.percision - k + 1] + 1 / 2. ** self.percision * comb(
+                self.percision, k)
+
+        self.etas = jnp.array( (-1.) ** kes * epsilons * 10. ** (self.percision / 3.) * 2. * np.sqrt(2*np.pi) )
+        self.betas = jnp.array(betas)
+
+        #Define and JIT compile some functions
+        def get_sersic_mog(flux,re,n):
+            sigma_start = re*self.frac_start
+            sigma_end = re*self.frac_end
+            sigmas = jnp.logspace(jnp.log10(sigma_start),jnp.log10(sigma_end),num = self.n_sigma)
+
+            f_sigmas = jnp.sum(self.etas * sersic1D(jnp.outer(sigmas,self.betas), flux,re,n).real,  axis=1)
+
+            del_log_sigma = jnp.abs(jnp.diff(jnp.log(sigmas)).mean())
+
+            amps = f_sigmas * del_log_sigma / jnp.sqrt(2*np.pi)
+
+            # weighting for trapezoid method integral
+            amps = amps.at[0].multiply(0.5)
+            amps = amps.at[-1].multiply(0.5)
+
+            amps = amps*2*np.pi*sigmas*sigmas
+            return amps,sigmas
+        self.get_sersic_mog = jit(get_sersic_mog)
+
+
+        def render_sersic_hybrid(xc,yc, flux, r_eff, n,ellip, theta):
+            amps,sigmas = self.get_sersic_mog(flux,r_eff,n)
+            q = 1.-ellip
+
+            sigmas_obs = jnp.sqrt(sigmas**2 + self.sig_psf_approx**2)
+            q_obs = jnp.sqrt( (q*q*sigmas**2 + self.sig_psf_approx**2)/ sigmas_obs**2 )
+
+            Fgal = render_gaussian_fourier(self.FX,self.FY, amps[self.w_fourier],sigmas[self.w_fourier],xc,yc, theta,q)
+
+            im_gal = render_gaussian_pixel(self.X,self.Y, amps[self.w_real],sigmas_obs[self.w_real],xc,yc, theta,q_obs[self.w_real])
+
+            return Fgal,im_gal
+        self.render_sersic_hyrbid = jax.jit(render_sersic_hybrid)
+
+        def conv_and_inv_FFT(F_im):
+            im = jnp.abs( jnp.fft.irfft2(F_im*self.PSF_fft, s= self.im_shape) )
+            return im
+        self.conv_and_inv_FFT = jit(conv_and_inv_FFT)
+
+    def render_sersic(self,
+            xc: float,
+            yc: float,
+            flux: float, 
+            r_eff: float, 
+            n: float,
+            ellip: float, 
+            theta: float)->jax.numpy.array:
+        """ Render a Sersic profile
+
+        Parameters
+        ----------
+        xc : float
+            Central x position
+        yc : float
+            Central y position
+        flux : float
+            Total flux
+        r_eff : float
+            Effective radius
+        n : float
+            Sersic index
+        ellip : float
+            Ellipticity
+        theta : float
+            Position angle in radians
+
+        Returns
+        -------
+        jax.numpy.array
+            Rendered Sersic model
+        """
+        F, im  = self.render_sersic_hyrbid(xc,yc, flux, r_eff, n,ellip, theta)
+        out = im + self.conv_and_inv_FFT(F)
+        return out
+
+    def render_doublesersic(self,
+            xc: float, 
+            yc: float, 
+            flux: float, 
+            f_1: float, 
+            r_eff_1: float, 
+            n_1: float, 
+            ellip_1: float, 
+            r_eff_2: float, 
+            n_2: float, 
+            ellip_2: float, 
+            theta: float
+            ) -> jax.numpy.array:
+        """Render a double Sersic profile with a common center and position angle
+
+        Parameters
+        ----------
+        xc : float
+            Central x position
+        yc : float
+            Central y position
+        flux : float
+            Total flux
+        f_1 : float
+            Fraction of flux in first component
+        r_eff_1 : float
+            Effective radius of first component
+        n_1 : float
+            Sersic index of first component
+        ellip_1 : float
+            Ellipticity of first component
+        r_eff_2 : float
+            Effective radius of second component
+        n_2 : float
+            Sersic index of second component
+        ellip_2 : float
+            Ellipticity of second component
+        theta : float
+            Position angle in radians
+
+        Returns
+        -------
+        jax.numpy.array
+            Rendered double Sersic model
+        """
+        F_1, im_1 = self.render_sersic_hyrbid(xc,yc, flux*f_1, r_eff_1, n_1,ellip_1, theta)
+        F_2, im_2 = self.render_sersic_hyrbid(xc,yc, flux*(1.-f_1), r_eff_2, n_2,ellip_2, theta)
+        im = im_1 + im_2  + self.conv_and_inv_FFT(F_1 + F_2)
+        return im
+
+    def render_pointsource(self, 
+            xc: float, 
+            yc: float, 
+            flux: float)-> jax.numpy.array:
+        """Render a Point source
+
+        Parameters
+        ----------
+        xc : float
+            Central x position
+        yc : float
+            Central y position
+        flux : float
+            Total flux
+
+        Returns
+        -------
+        jax.numpy.array
+            rendered pointsource model
+        """
+        F_im = render_pointsource_fourier(self.FX,self.FY,xc,yc,flux)
+        im = self.conv_and_inv_FFT(F_im)
+        return im
+
+
+    def render_multi(self, 
+            type_list: Iterable, 
+            var_list: Iterable)-> jax.numpy.array:
+        """Function to render multiple sources in the same image
+
+        Parameters
+        ----------
+        type_list : Iterable
+            List of strings containing the types of sources
+        var_list : Iterable
+            List of arrays contiaining the variables for each profile
+
+        Returns
+        -------
+        jax.numpy.array
+            Rendered image
+        """
+        
+        F_tot = jnp.zeros_like(self.FX)
+        im_tot = np.zeros_like(self.X)
+
+        for ind in range(len(type_list)):
+            if type_list[ind] == 'pointsource':
+                F_tot = F_tot + render_pointsource_fourier(self.FX,self.FY,xc,yc,flux)
+            elif type_list[ind] == 'sersic':
+                F_cur, im_cur  = self.render_sersic_hyrbid(*var_list[ind])
+                F_tot = F_tot + F_cur
+                im_tot = im_tot + im_cur
+            elif type_list[ind] == 'exp':
+                xc,yc, flux, r_eff,ellip, theta = var_list[ind]
+                F_cur, im_cur  = self.render_sersic_hyrbid(xc,yc, flux, r_eff,1.,ellip, theta)
+                F_tot = F_tot + F_cur
+                im_tot = im_tot + im_cur
+            elif type_list[ind] == 'dev':
+                xc,yc, flux, r_eff,ellip, theta = var_list[ind]
+                F_cur, im_cur  = self.render_sersic_hyrbid(xc,yc, flux, r_eff,4.,ellip, theta)
+                F_tot = F_tot + F_cur
+            elif type_list[ind] == 'doublesersic':
+                xc, yc, flux, f_1, r_eff_1, n_1, ellip_1, r_eff_2, n_2, ellip_2, theta = var_list[ind]
+                F_1, im_1 = self.render_sersic_hyrbid(xc,yc, flux*f_1, r_eff_1, n_1,ellip_1, theta)
+                F_2, im_2 = self.render_sersic_hyrbid(xc,yc, flux*(1.-f_1), r_eff_2, n_2,ellip_2, theta)
+                F_tot = F_tot + F_1 + F_2
+                im_tot = im_tot + im_1 + im_2
+
+        im = self.conv_and_inv_FFT(F_tot) + im_tot
         return im
