@@ -7,6 +7,17 @@ from scipy.special import comb
 from abc import abstractmethod
 from typing import Union, Optional, Iterable
 
+base_profile_types = ['sersic','doublesersic','pointsource','exp','dev']
+base_profile_params =dict( 
+    zip(base_profile_types,
+    [ ['xc','yc','flux','r_eff','n','ellip','theta'],
+    ['xc','yc','flux','f_1', 'r_eff_1','n_1','ellip_1', 'r_eff_2','n_2','ellip_2','theta'],
+    ['xc','yc','flux'],
+    ['xc','yc','flux','r_eff','ellip','theta'],
+    ['xc','yc','flux','r_eff','ellip','theta'],]
+    )
+)
+
 
 class BaseRenderer(object):
     def __init__(self, 
@@ -39,6 +50,10 @@ class BaseRenderer(object):
         fft_shift_arr_x = jnp.exp(jax.lax.complex(0.,-1.)*2.*3.1415*-1*(self.psf_shape[0]/2.-0.5)*self.FX)
         fft_shift_arr_y = jnp.exp(jax.lax.complex(0.,-1.)*2.*3.1415*-1*(self.psf_shape[1]/2.-0.5)*self.FY)
         self.PSF_fft = jnp.fft.rfft2(self.pixel_PSF, s = self.im_shape)*fft_shift_arr_x*fft_shift_arr_y
+
+        #All the  renderers here these profile types
+        self.profile_types = base_profile_types
+        self.profile_params = base_profile_params
 
     def flat_sky(self,x:float)-> float:
         """A constant sky background
@@ -185,16 +200,8 @@ class BaseRenderer(object):
         jax.numpy.array
             Rendered, observed model
         """
-        if profile_type == 'sersic':
-            im = self.render_sersic(*params)
-        elif profile_type == 'doublesersic':
-            im = self.render_doublesersic(*params)
-        elif profile_type == 'exp':
-            im = self.render_exp(*params)
-        elif profile_type == 'dev':
-            im = self.render_dev(*params)
-        else:
-            im = self.render_pointsource(*params)
+        render_func = getattr(self, f'render_{profile_type}')
+        im = render_func(*params)
         return im
 
 
@@ -752,7 +759,7 @@ class FourierRenderer(BaseRenderer):
 
         for ind in range(len(type_list)):
             if type_list[ind] == 'pointsource':
-                F_tot = F_tot + render_pointsource_fourier(self.FX,self.FY,xc,yc,flux)
+                F_tot = F_tot + render_pointsource_fourier(self.FX,self.FY,*var_list[ind])
             elif type_list[ind] == 'sersic':
                 F_tot = F_tot + self.render_sersic_mog_fourier(*var_list[ind])
             elif type_list[ind] == 'exp':
@@ -1052,7 +1059,7 @@ class HybridRenderer(BaseRenderer):
 
         for ind in range(len(type_list)):
             if type_list[ind] == 'pointsource':
-                F_tot = F_tot + render_pointsource_fourier(self.FX,self.FY,xc,yc,flux)
+                F_tot = F_tot + render_pointsource_fourier(self.FX,self.FY,*var_list[ind])
             elif type_list[ind] == 'sersic':
                 F_cur, im_cur  = self.render_sersic_hyrbid(*var_list[ind])
                 F_tot = F_tot + F_cur

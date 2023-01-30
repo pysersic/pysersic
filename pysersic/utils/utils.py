@@ -81,7 +81,7 @@ def generate_sersic_prior(image: jax.numpy.array,
     
 
     ellip_prior = dist.Uniform(0,0.8) 
-    theta_prior = dist.Uniform(-jnp.pi/2.,jnp.pi/2.) 
+    theta_prior = dist.VonMises(loc = 0,concentration=0)
     n_prior = dist.TruncatedNormal(loc = 2, scale= 1., low = 0.5, high=8)
 
     if position_guess is None:
@@ -193,7 +193,7 @@ def generate_doublesersic_prior(image: jax.numpy.array,
     n_1_prior = dist.TruncatedNormal(loc = 4, scale= 1, low = 0.5, high=8)
     n_2_prior = dist.TruncatedNormal(loc = 1, scale= 1, low = 0.5, high=8)
 
-    theta_prior = dist.Uniform(-jnp.pi/2.,jnp.pi/2.) 
+    theta_prior = dist.VonMises(loc = 0,concentration=0)
     
     if position_guess is None:
         xc_guess = image.shape[0]/2
@@ -329,119 +329,3 @@ def sample_sky(prior_dict, sky_type):
         sky2 = sample('sky2', prior_dict['sky2'])
         params = jnp.array([sky0,sky1,sky2])
     return params
-
-def sample_sersic(
-        prior_dict: dict,
-        add_on: Optional[str] = '')-> jax.numpy.array:
-    """Sampling function for a Sersic profile
-
-    Parameters
-    ----------
-    prior_dict : dict
-        Dictionary containing numpyro distributions for each parameter
-    add_on : Optional[str], optional
-        Extra charecters to add onto variable names, by default ''
-
-    Returns
-    -------
-    jax.numpy.array
-        Sampled parameters
-    """
-    flux = sample('flux'+add_on, prior_dict['flux'+add_on])
-    n = sample('n'+add_on,prior_dict['n'+add_on])
-    r_eff = sample('r_eff'+add_on,prior_dict['r_eff'+add_on])
-    ellip = sample('ellip'+add_on,prior_dict['ellip'+add_on])
-    theta = sample('theta'+add_on,prior_dict['theta'+add_on])
-    xc = sample('xc'+add_on,prior_dict['xc'+add_on])
-    yc = sample('yc'+add_on,prior_dict['yc'+add_on])
-
-    #collect params and render scene
-    params = jnp.array([xc,yc,flux,r_eff,n, ellip, theta])
-    return params
-
-def sample_dev_exp(
-        prior_dict: dict,
-        add_on: Optional[str] = '')-> jax.numpy.array:
-    """Sampling function for a exp or dev profile
-
-    Parameters
-    ----------
-    prior_dict : dict
-        Dictionary containing numpyro distributions for each parameter
-    add_on : Optional[str], optional
-        Extra charecters to add onto variable names, by default ''
-
-    Returns
-    -------
-    jax.numpy.array
-        Sampled parameters
-    """
-    flux = sample('flux'+add_on, prior_dict['flux'+add_on])
-    r_eff = sample('r_eff'+add_on,prior_dict['r_eff'+add_on])
-    ellip = sample('ellip'+add_on,prior_dict['ellip'+add_on])
-    theta = sample('theta'+add_on,prior_dict['theta'+add_on])
-    xc = sample('xc'+add_on,prior_dict['xc'+add_on])
-    yc = sample('yc'+add_on,prior_dict['yc'+add_on])
-
-    #collect params and render scene
-    params = jnp.array([xc,yc,flux,r_eff, ellip, theta])
-    return params
-
-def sample_doublesersic(
-        prior_dict: dict,
-        add_on: Optional[str] = '')-> jax.numpy.array:
-    """Sampling function for a double Sersic profile
-
-    Parameters
-    ----------
-    prior_dict : dict
-        Dictionary containing numpyro distributions for each parameter
-    add_on : Optional[str], optional
-        Extra charecters to add onto variable names, by default ''
-
-    Returns
-    -------
-    jax.numpy.array
-        Sampled parameters
-    """
-
-    flux = sample('flux'+add_on, prior_dict['flux'+add_on])
-    f_1 = sample('f_1'+add_on, prior_dict['f_1'+add_on])
-    n_1 = sample('n_1'+add_on,prior_dict['n_1'+add_on])
-    r_eff_1 = sample('r_eff_1'+add_on,prior_dict['r_eff_1'+add_on])
-    ellip_1 = sample('ellip_1'+add_on,prior_dict['ellip_1'+add_on])
-    n_2 = sample('n_2'+add_on,prior_dict['n_2'+add_on])
-    r_eff_2 = sample('r_eff_2'+add_on,prior_dict['r_eff_2'+add_on])
-    ellip_2 = sample('ellip_2'+add_on,prior_dict['ellip_2'+add_on])
-    theta = sample('theta'+add_on,prior_dict['theta'])
-    xc = sample('xc'+add_on,prior_dict['xc'+add_on])
-    yc = sample('yc'+add_on,prior_dict['yc'+add_on])
-
-    params = jnp.array([xc, yc, flux, f_1, r_eff_1, n_1, ellip_1, r_eff_2, n_2, ellip_2, theta])
-    return params
-
-def sample_pointsource(
-        prior_dict: dict,
-        add_on: Optional[str] = '')-> jax.numpy.array:
-    """Sampling function for a point source
-
-    Parameters
-    ----------
-    prior_dict : dict
-        Dictionary containing numpyro distributions for each parameter
-    add_on : Optional[str], optional
-        Extra charecters to add onto variable names, by default ''
-
-    Returns
-    -------
-    jax.numpy.array
-        Sampled parameters
-    """
-    flux = sample('flux'+add_on, prior_dict['flux'+add_on])
-    xc = sample('xc'+add_on,prior_dict['xc'+add_on])
-    yc = sample('yc'+add_on,prior_dict['yc'+add_on])
-
-    params = jnp.array([xc,yc,flux,])
-    return params
-
-sample_func_dict = {'sersic':sample_sersic,'doublesersic':sample_doublesersic, 'pointsource':sample_pointsource, 'exp':sample_dev_exp, 'dev':sample_dev_exp}
