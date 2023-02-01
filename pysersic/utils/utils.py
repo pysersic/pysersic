@@ -320,7 +320,6 @@ def sample_sky(prior_dict, sky_type):
     if sky_type is None:
         params = 0
     elif sky_type == 'flat':
-
         sky0 = sample('sky0', prior_dict['sky0'])
         params = sky0
     else:

@@ -626,7 +626,7 @@ class FourierRenderer(BaseRenderer):
             return im
         self.conv_and_inv_FFT = jit(conv_and_inv_FFT)
 
-    #Slower than pixel version, not sure exactly the cause, maybe try lax.scan instead of newaxis
+
     def render_sersic(self,
             xc: float,
             yc: float,

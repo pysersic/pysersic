@@ -1,13 +1,15 @@
 import jax
 import jax.numpy as jnp
 import numpy as np
+import matplotlib.pyplot as plt
 from numpyro import distributions as dist, infer
 import numpyro
 import arviz as az
 import pandas
 import optax
+from abc import abstractmethod,ABC
 
-from numpyro.infer import SVI, Trace_ELBO, RenyiELBO
+from numpyro.infer import SVI, Trace_ELBO
 from numpyro.infer.initialization import init_to_median
 from numpyro.infer.reparam import TransformReparam,CircularReparam
 from jax import random
@@ -20,10 +22,9 @@ from pysersic.utils import autoprior,multi_prior, sample_sky
 from typing import Union, Optional, Callable
 ArrayLike = Union[np.array, jax.numpy.array]
 
-
-class FitSingle():
+class BaseFitter(ABC):
     """
-    Class used to fit a single source
+    Bass class for Pysersic Fitters
     """
     def __init__(self,
         data: ArrayLike,
@@ -31,7 +32,6 @@ class FitSingle():
         psf_map: ArrayLike,
         mask: Optional[ArrayLike] = None,
         sky_model: Optional[str] = None,
-        profile_type: Optional[str] = 'sersic', 
         renderer: Optional[BaseRenderer] =  HybridRenderer, 
         renderer_kwargs: Optional[dict] = {}) -> None:
         """Initialze FitSingle class
@@ -48,8 +48,6 @@ class FitSingle():
             Array specifying the mask, `True` or 1 signifies a pixel should be masked, must be same shape as `data`
         sky_model : Optional[str], optional
             One of None, 'flat' or 'tilted-plane' specifying how to model the sky background
-        profile_type : Optional[str], optional
-            Must be one of: ['sersic','doublesersic','pointsource','exp','dev'] specifying how to paramaterize the source, default 'sersic'
         renderer : Optional[BaseRenderer], optional
             The renderer to be used to generate model images, by default HybridRenderer
         renderer_kwargs : Optional[dict], optional
@@ -68,12 +66,6 @@ class FitSingle():
             self.mask = jnp.logical_not(jnp.array(mask)).astype(jnp.bool_)
 
         self.renderer = renderer(data.shape, jnp.array(psf_map), **renderer_kwargs)
-        
-        if profile_type in self.renderer.profile_types:
-            self.profile_type = profile_type
-            self.param_names = self.renderer.profile_params[self.profile_type]
-        else:
-            raise AssertionError('Profile must be one of:', renderer.profile_types)
     
         if sky_model not in [None,'flat','tilted-plane']:
             raise AssertionError('Sky model must match one of: None,flat, tilted-plane')
@@ -82,6 +74,7 @@ class FitSingle():
         
         self.prior_dict = {}
 
+    
     def set_prior(self,parameter: str,
         distribution: numpyro.distributions.Distribution) -> None:
         """Set the prior for a specific parameter
@@ -118,56 +111,6 @@ class FitSingle():
                                 dist.Normal(),
                                 dist.transforms.AffineTransform(0.0,1e-5),)
             )
-
-    def autogenerate_priors(self) -> None:
-        """Generate default priors based on image and profile type. Calls pysersic.utils.autoprior
-        """
-        prior_dict = autoprior(self.data*self.mask, self.profile_type)
-        for i in prior_dict.keys():
-            self.set_prior(i,prior_dict[i])
-        
-        #set sky priors
-        self.generate_sky_priors()
-
-
-
-    def build_model(self,) -> Callable:
-        """ Generate Numpyro model for the specified image, profile and priors
-
-        Returns
-        -------
-        model: Callable
-            Function specifying the current model in Numpyro, can be passed to inference algorithms
-        """
-        #Make sure all variables have priors
-        check_prior_dict = np.all([
-            (param in self.param_names) or ('sky' in param) for param in self.prior_dict.keys()
-        ])
-        if not check_prior_dict:
-            raise AssertionError('Not all variables have priors, please run .autogenerate_priors')
-
-        #Set up and reparamaterization, 
-        reparam_dict = {}
-        for key in self.prior_dict.keys():
-            if hasattr(self.prior_dict[key], 'transforms'):
-                reparam_dict[key] = TransformReparam()
-            elif type(self.prior_dict[key]) == numpyro.distributions.directional.VonMises:
-                reparam_dict[key] = CircularReparam()
-
-        @numpyro.handlers.reparam(config = reparam_dict)
-        def model():
-            params = jnp.array([numpyro.sample(name,self.prior_dict[name]) for name in self.param_names])
-            out = self.renderer.render_source(params, self.profile_type)
-
-            sky_params = sample_sky(self.prior_dict, self.sky_model)
-            sky = self.renderer.render_sky(sky_params, self.sky_model)
-
-            obs = out + sky
-            
-            with numpyro.handlers.mask(mask = self.mask):
-                numpyro.sample("obs", dist.Normal(obs, self.rms_map), obs=self.data)
-
-        return model
     
     def injest_data(self, 
                 sampler: Optional[numpyro.infer.mcmc.MCMC] =  None, 
@@ -175,7 +118,7 @@ class FitSingle():
                 purge_extra: Optional[bool] = True,
                 rkey: Optional[jax.random.PRNGKey] = random.PRNGKey(5)
         ) -> pandas.DataFrame:
-        """Method to injest data from optimized SVI model or results of sampling. Sets the class attribute 'az_data' with an Arviz InferenceData object.
+        """Method to injest data from optimized SVI model or results of sampling. Sets the class attribute 'idata' with an Arviz InferenceData object.
 
         Parameters
         ----------
@@ -184,7 +127,7 @@ class FitSingle():
         svi_res_dict : Optional[dict], optional
             Dictionary containing 'guide', 'model' and 'svi_result' specifying a trained SVI model
         purge_extra : Optional[bool], optional
-            Whether to purge variables containing 'auto' or 'base' often used in reparamaterization, by default True
+            Whether to purge variables containing 'auto', 'base' or 'unwrapped' often used in reparamaterization, by default True
         rkey : Optional[jax.random.PRNGKey], optional
             PRNG key to use, by default jax.random.PRNGKey(5)
 
@@ -203,7 +146,7 @@ class FitSingle():
             raise AssertionError("Must svi results dictionary or sampled sampler")
 
         elif not sampler is None:
-            self.az_data = az.from_numpyro(sampler)
+            self.idata = az.from_numpyro(sampler)
         else:
             assert 'guide' in svi_res_dict.keys()
             assert 'model' in svi_res_dict.keys()
@@ -214,14 +157,14 @@ class FitSingle():
             post_dict = {}
             for key in post_raw:
                 post_dict[key] = post_raw[key][jnp.newaxis,]
-            self.az_data = az.from_dict(post_dict)
+            self.idata = az.from_dict(post_dict)
 
-        var_names = list(self.az_data.posterior.to_dataframe().columns)
+        var_names = list(self.idata.posterior.to_dataframe().columns)
         
         for var in var_names:
             if 'theta' in var:
-                new_theta = np.remainder(self.az_data['posterior'][var]+np.pi, np.pi)
-                self.az_data['posterior'][var] = new_theta
+                new_theta = np.remainder(self.idata['posterior'][var]+np.pi, np.pi)
+                self.idata['posterior'][var] = new_theta
 
         if purge_extra:
             to_drop = []
@@ -229,9 +172,9 @@ class FitSingle():
                 if ('base' in var) or ('auto' in var) or ('unwrapped' in var):
                     to_drop.append(var)
 
-            self.az_data = self.az_data.posterior.drop_vars(to_drop)
+            self.idata.posterior = self.idata.posterior.drop_vars(to_drop)
 
-        return az.summary(self.az_data)
+        return az.summary(self.idata)
 
 
     def sample(self,
@@ -288,7 +231,6 @@ class FitSingle():
         """
 
         optax_optimizer = optax.adabelief(0.1)
-
         optimizer = numpyro.optim.optax_to_numpyro(optax_optimizer)
         
         model = self.build_model()
@@ -300,10 +242,125 @@ class FitSingle():
         self.svi_res_dict = dict(guide = guide, model = model, svi_result = svi_result)
         summary = self.injest_data(svi_res_dict= self.svi_res_dict)
         return summary
+    
+
+    @abstractmethod
+    def build_model(self,):
+        raise NotImplementedError
+
+    @abstractmethod
+    def autogenerate_priors(self,):
+        raise NotImplementedError
+    
+    @abstractmethod
+    def render_best_fit(self,):
+        raise NotImplementedError
+
+    # TODO Some analysis stuff here
+    def plot_residuals(self):
+        return None
+
+class FitSingle(BaseFitter):
+    """
+    Class used to fit a single source
+    """
+    def __init__(self,
+        data: ArrayLike,
+        weight_map: ArrayLike,
+        psf_map: ArrayLike,
+        mask: Optional[ArrayLike] = None,
+        sky_model: Optional[str] = None,
+        profile_type: Optional[str] = 'sersic', 
+        renderer: Optional[BaseRenderer] =  HybridRenderer, 
+        renderer_kwargs: Optional[dict] = {}) -> None:
+        """Initialze FitSingle class
+
+        Parameters
+        ----------
+        data : ArrayLike
+            Science image to be fit
+        weight_map : ArrayLike
+            Weight map (one over the variance) corresponding to `data`, must be the same shape
+        psf_map : ArrayLike
+            Pixelized PSF
+        mask : Optional[ArrayLike], optional
+            Array specifying the mask, `True` or 1 signifies a pixel should be masked, must be same shape as `data`
+        sky_model : Optional[str], optional
+            One of None, 'flat' or 'tilted-plane' specifying how to model the sky background
+        profile_type : Optional[str], optional
+            Must be one of: ['sersic','doublesersic','pointsource','exp','dev'] specifying how to paramaterize the source, default 'sersic'
+        renderer : Optional[BaseRenderer], optional
+            The renderer to be used to generate model images, by default HybridRenderer
+        renderer_kwargs : Optional[dict], optional
+            Any additional arguments to pass to the renderer, by default {}
+        """
+
+        super().__init__(data,weight_map,psf_map,mask = mask,sky_model = sky_model, renderer = renderer, renderer_kwargs = renderer_kwargs)
+
+        if profile_type in self.renderer.profile_types:
+            self.profile_type = profile_type
+            self.param_names = self.renderer.profile_params[self.profile_type]
+        else:
+            raise AssertionError('Profile must be one of:', renderer.profile_types)
+
+    def autogenerate_priors(self) -> None:
+        """Generate default priors based on image and profile type. Calls pysersic.utils.autoprior
+        """
+        prior_dict = autoprior(self.data*self.mask, self.profile_type)
+        for i in prior_dict.keys():
+            self.set_prior(i,prior_dict[i])
+        
+        #set sky priors
+        self.generate_sky_priors()
 
 
 
-class FitMulti(FitSingle):
+    def build_model(self,) -> Callable:
+        """ Generate Numpyro model for the specified image, profile and priors
+
+        Returns
+        -------
+        model: Callable
+            Function specifying the current model in Numpyro, can be passed to inference algorithms
+        """
+        # Make sure all variables have priors
+        check_prior_dict = np.all([
+            (param in self.param_names) or ('sky' in param) for param in self.prior_dict.keys()
+        ])
+        if not check_prior_dict:
+            raise AssertionError('Not all variables have priors, please run .autogenerate_priors')
+
+        #Set up and reparamaterization, 
+        reparam_dict = {}
+        for key in self.prior_dict.keys():
+            if hasattr(self.prior_dict[key], 'transforms'):
+                reparam_dict[key] = TransformReparam()
+            elif type(self.prior_dict[key]) == numpyro.distributions.directional.VonMises:
+                reparam_dict[key] = CircularReparam()
+
+        @numpyro.handlers.reparam(config = reparam_dict)
+        def model():
+            params = jnp.array([numpyro.sample(name,self.prior_dict[name]) for name in self.param_names])
+            out = self.renderer.render_source(params, self.profile_type)
+
+            sky_params = sample_sky(self.prior_dict, self.sky_model)
+            sky = self.renderer.render_sky(sky_params, self.sky_model)
+
+            obs = out + sky
+            
+            with numpyro.handlers.mask(mask = self.mask):
+                numpyro.sample("obs", dist.Normal(obs, self.rms_map), obs=self.data)
+
+        return model
+
+    def render_best_fit(self):
+        assert hasattr(self, 'idata')
+        medians = self.idata.posterior.median()
+        median_params = jnp.array([medians[name].data for name in self.param_names])
+        mod = self.renderer.render_source(median_params, self.profile_type)
+        return mod
+
+class FitMulti(BaseFitter):
     """
     Class used to fit multiple sources within a single image
     """
@@ -397,4 +454,6 @@ class FitMulti(FitSingle):
             with numpyro.handlers.mask(mask = self.mask):
                 numpyro.sample("obs", dist.Normal(obs, self.rms_map), obs=self.data)
 
-        return model  
+        return model
+    def render_best_fit(self,):
+        raise NotImplementedError
