@@ -16,7 +16,7 @@ from jax import random
 
 
 from pysersic.rendering import PixelRenderer,FourierRenderer,HybridRenderer,BaseRenderer, base_profile_params
-from pysersic.utils import autoprior,multi_prior, sample_sky
+from pysersic.utils import autoprior,multi_prior, sample_sky, gaussian_loss
 
 
 from typing import Union, Optional, Callable
@@ -315,8 +315,13 @@ class FitSingle(BaseFitter):
 
 
 
-    def build_model(self,) -> Callable:
+    def build_model(self,loss_func: Optional[Callable] = gaussian_loss) -> Callable:
         """ Generate Numpyro model for the specified image, profile and priors
+
+        Parameters
+        ----------
+        loss_func: Callable
+            Function which takes in model, data and rms in that order and samples the numpyro loss.
 
         Returns
         -------
@@ -349,8 +354,7 @@ class FitSingle(BaseFitter):
             obs = out + sky
             
             with numpyro.handlers.mask(mask = self.mask):
-                numpyro.sample("obs", dist.Normal(obs, self.rms_map), obs=self.data)
-
+                loss = loss_func(obs, self.data, self.rms_map)
         return model
 
     def render_best_fit(self):
