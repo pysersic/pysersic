@@ -8,15 +8,17 @@ import arviz as az
 import pandas
 import optax
 from abc import abstractmethod,ABC
+from functools import partial
 
 from numpyro.infer import SVI, Trace_ELBO
 from numpyro.infer.initialization import init_to_median
+from numpyro.optim import Adam
 from numpyro.infer.reparam import TransformReparam,CircularReparam
 from jax import random
 
 
 from pysersic.rendering import PixelRenderer,FourierRenderer,HybridRenderer,BaseRenderer, base_profile_params
-from pysersic.utils import autoprior,multi_prior, sample_sky, gaussian_loss
+from pysersic.utils import autoprior,multi_prior, sample_sky, gaussian_loss, train_numpyro_svi_early_stop
 
 
 from typing import Union, Optional, Callable
@@ -32,6 +34,7 @@ class BaseFitter(ABC):
         psf_map: ArrayLike,
         mask: Optional[ArrayLike] = None,
         sky_model: Optional[str] = None,
+        loss_func: Optional[Callable] = gaussian_loss,
         renderer: Optional[BaseRenderer] =  HybridRenderer, 
         renderer_kwargs: Optional[dict] = {}) -> None:
         """Initialze FitSingle class
@@ -54,6 +57,9 @@ class BaseFitter(ABC):
             Any additional arguments to pass to the renderer, by default {}
         """
 
+
+        self.loss_func = loss_func
+
         if data.shape != weight_map.shape:
             raise AssertionError('Weight map ndims must match input data')
             
@@ -75,6 +81,9 @@ class BaseFitter(ABC):
         self.prior_dict = {}
 
     
+    def set_loss_func(self, loss_func: Callable) -> None:
+        self.loss_func = loss_func
+
     def set_prior(self,parameter: str,
         distribution: numpyro.distributions.Distribution) -> None:
         """Set the prior for a specific parameter
@@ -178,10 +187,10 @@ class BaseFitter(ABC):
 
 
     def sample(self,
-                sampler_kwargs: Optional[dict] = dict(init_strategy =  init_to_median),
+                sampler_kwargs: Optional[dict] ={},
                 mcmc_kwargs: Optional[dict] = 
-                dict(num_warmup=500,
-                num_samples=500,
+                dict(num_warmup=1000,
+                num_samples=1000,
                 num_chains=2,
                 progress_bar=True),
                 rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3)     
@@ -211,11 +220,26 @@ class BaseFitter(ABC):
 
         return summary
 
-    def optimize(self,
-            Nrun:Optional[int] = 4000,
-            rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3) 
+
+    def _train_SVI(self,
+            autoguide,
+            SVI_kwargs: Optional[dict]= {},
+            train_kwargs: Optional[dict] = {},
             )-> pandas.DataFrame:
-        """ Perform inference by optimizing a Multivariate Normal SVI model. This is a good starting place to find a 'best fit' along with reasonable uncertainties.
+        model_cur = self.build_model()
+        guide = autoguide(model_cur)
+
+        svi_kernel = SVI(model_cur,guide, Adam(0.1), **SVI_kwargs)
+        svi_result = train_numpyro_svi_early_stop(svi_kernel, **train_kwargs)
+
+        svi_res_dict =  dict(guide = guide, model = model_cur, svi_result = svi_result)
+        summary = self.injest_data(svi_res_dict=svi_res_dict)
+        return summary
+
+    def best_fit(self,
+            rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3),
+            )-> pandas.DataFrame:
+        """ Perform inference by finding the Maximum a-posteriori (MAP) with uncertainties calculated using the Laplace Approximnation. This is a good starting place to find a 'best fit' along with reasonable uncertainties.
 
         Parameters
         ----------
@@ -230,19 +254,23 @@ class BaseFitter(ABC):
             ArviZ summary of posterior
         """
 
-        optax_optimizer = optax.adabelief(0.1)
-        optimizer = numpyro.optim.optax_to_numpyro(optax_optimizer)
-        
-        model = self.build_model()
-        guide = numpyro.infer.autoguide.AutoMultivariateNormal(model)
-        
-        svi = SVI(model, guide, optimizer, loss = Trace_ELBO(num_particles=2), )
-        svi_result = svi.run(rkey, Nrun)
-        
-        self.svi_res_dict = dict(guide = guide, model = model, svi_result = svi_result)
-        summary = self.injest_data(svi_res_dict= self.svi_res_dict)
+        train_kwargs = dict(lr_init = 0.1, num_round = 5,frac_lr_decrease  = 0.25, patience = 100, optimizer = Adam)
+        svi_kwargs = dict(loss = Trace_ELBO(3))
+        summary = self._train_SVI(infer.autoguide.AutoLaplaceApproximation, SVI_kwargs=svi_kwargs, train_kwargs=train_kwargs)
+
         return summary
     
+    def train_flow(self,
+            rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3),
+        )-> pandas.DataFrame:
+
+        train_kwargs = dict(lr_init = 5e-2, num_round = 2, patience = 100, optimizer = Adam)
+        svi_kwargs = dict(loss = Trace_ELBO(20))
+        guide_func = partial(infer.autoguide.AutoBNAFNormal, num_flows=3, hidden_factors=[10,10])
+
+        summary = self._train_SVI(guide_func, SVI_kwargs=svi_kwargs, train_kwargs=train_kwargs)
+
+        return summary
 
     @abstractmethod
     def build_model(self,):
@@ -271,6 +299,7 @@ class FitSingle(BaseFitter):
         mask: Optional[ArrayLike] = None,
         sky_model: Optional[str] = None,
         profile_type: Optional[str] = 'sersic', 
+        loss_func: Optional[Callable] = gaussian_loss,
         renderer: Optional[BaseRenderer] =  HybridRenderer, 
         renderer_kwargs: Optional[dict] = {}) -> None:
         """Initialze FitSingle class
@@ -295,7 +324,7 @@ class FitSingle(BaseFitter):
             Any additional arguments to pass to the renderer, by default {}
         """
 
-        super().__init__(data,weight_map,psf_map,mask = mask,sky_model = sky_model, renderer = renderer, renderer_kwargs = renderer_kwargs)
+        super().__init__(data,weight_map,psf_map,loss_func = loss_func, mask = mask,sky_model = sky_model, renderer = renderer, renderer_kwargs = renderer_kwargs)
 
         if profile_type in self.renderer.profile_types:
             self.profile_type = profile_type
@@ -315,7 +344,7 @@ class FitSingle(BaseFitter):
 
 
 
-    def build_model(self,loss_func: Optional[Callable] = gaussian_loss) -> Callable:
+    def build_model(self,) -> Callable:
         """ Generate Numpyro model for the specified image, profile and priors
 
         Parameters
@@ -353,8 +382,7 @@ class FitSingle(BaseFitter):
 
             obs = out + sky
             
-            with numpyro.handlers.mask(mask = self.mask):
-                loss = loss_func(obs, self.data, self.rms_map)
+            loss = self.loss_func(obs, self.data, self.rms_map, self.mask)
         return model
 
     def render_best_fit(self):
@@ -363,6 +391,7 @@ class FitSingle(BaseFitter):
         median_params = jnp.array([medians[name].data for name in self.param_names])
         mod = self.renderer.render_source(median_params, self.profile_type)
         return mod
+
 
 class FitMulti(BaseFitter):
     """
@@ -374,6 +403,7 @@ class FitMulti(BaseFitter):
         psf_map: ArrayLike,
         mask: Optional[ArrayLike] = None,
         sky_model: Optional[str] = None,
+        loss_func: Optional[Callable] = gaussian_loss,
         renderer: Optional[BaseRenderer] =  HybridRenderer, 
         renderer_kwargs: Optional[dict] = {}) -> None:
         """Initialze FitMulti class
@@ -397,7 +427,7 @@ class FitMulti(BaseFitter):
         renderer_kwargs : Optional[dict], optional
             Any additional arguments to pass to the renderer, by default {}
         """
-        super().__init__(data,weight_map,psf_map,mask = mask,sky_model = sky_model, renderer = renderer, renderer_kwargs = renderer_kwargs)
+        super().__init__(data,weight_map,psf_map,mask = mask,loss_func = loss_func, sky_model = sky_model, renderer = renderer, renderer_kwargs = renderer_kwargs)
 
         if type(self.renderer) not in [FourierRenderer,HybridRenderer]:
             raise AssertionError('Currently only FourierRenderer and HybridRenderer Supported for FitMulti')
@@ -455,9 +485,10 @@ class FitMulti(BaseFitter):
 
             obs = out + sky
             
-            with numpyro.handlers.mask(mask = self.mask):
-                numpyro.sample("obs", dist.Normal(obs, self.rms_map), obs=self.data)
+            loss = self.loss_func(obs, self.data, self.rms_map, self.mask)
+            return loss
 
         return model
+    
     def render_best_fit(self,):
         raise NotImplementedError
