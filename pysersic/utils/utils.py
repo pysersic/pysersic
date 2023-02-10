@@ -9,7 +9,23 @@ from functools import partial
 import copy
 import tqdm
 
-def sample_sky(prior_dict, sky_type):
+def sample_sky(
+        prior_dict: dict,
+        sky_type:str)-> jnp.array:
+    """Utilitly function to sample parameters for different types of sky models
+
+    Parameters
+    ----------
+    prior_dict : dict
+        Dictionary containing nupmyro Distribution objects for each parameter
+    sky_type : str
+        Type of sky model to use
+
+    Returns
+    -------
+    jnp.array
+        _description_
+    """
     if sky_type is None:
         params = 0
     elif sky_type == 'flat':
@@ -33,7 +49,32 @@ def train_numpyro_svi_early_stop(
         optimizer: Optional[optim._NumPyroOptim] = optim.Adam,
         rkey: Optional[PRNGKey] = PRNGKey(10),
     )-> SVIRunResult:
-    
+    """Optimize a SVI model by training for multiple rounds with a deacreasing learning rate, and early stopping for each round
+
+    Parameters
+    ----------
+    svi_class : SVI
+        Initialize numpyo SVI class, note that the optimizer will be overwritten
+    num_round : Optional[int], optional
+        Number of training rounds, by default 3
+    max_train : Optional[int], optional
+        Max number of training epochs per ropund, by default 3000
+    lr_init : Optional[float], optional
+        Initial learning rate, by default 0.1
+    frac_lr_decrease : Optional[float], optional
+        Multiplicative factor to change learning rate each round, by default 0.1
+    patience : Optional[int], optional
+        Number of training epochs to wait for improvement, by default 100
+    optimizer : Optional[optim._NumPyroOptim], optional
+        Optimizer algorithm tro use, by default optim.Adam
+    rkey : Optional[PRNGKey], optional
+        Jax PRNG key, by default PRNGKey(10)
+
+    Returns
+    -------
+    SVIRunResult
+        SVI Result class containing trained model
+    """
     optim_init = optimizer(lr_init)
     svi_class.__setattr__('optim', optim_init)
 
@@ -66,7 +107,7 @@ def train_numpyro_svi_early_stop(
                     best_loss = loss
                     best_state = copy.copy(svi_state)
                     wait_counter = 0
-                elif wait_counter > patience:
+                elif wait_counter >= patience:
                     break
                 else:
                     wait_counter += 1

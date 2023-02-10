@@ -37,7 +37,7 @@ class BaseFitter(ABC):
         loss_func: Optional[Callable] = gaussian_loss,
         renderer: Optional[BaseRenderer] =  HybridRenderer, 
         renderer_kwargs: Optional[dict] = {}) -> None:
-        """Initialze FitSingle class
+        """Initialze BaseFitter class
 
         Parameters
         ----------
@@ -82,6 +82,13 @@ class BaseFitter(ABC):
 
     
     def set_loss_func(self, loss_func: Callable) -> None:
+        """Set loss function to be used for inference
+
+        Parameters
+        ----------
+        loss_func : Callable
+            Functions which takes samples the loss function, see utils/loss.py for some examples.
+        """
         self.loss_func = loss_func
 
     def set_prior(self,parameter: str,
@@ -222,15 +229,35 @@ class BaseFitter(ABC):
 
 
     def _train_SVI(self,
-            autoguide,
+            autoguide: numpyro.infer.autoguide.AutoContinuous,
             SVI_kwargs: Optional[dict]= {},
             train_kwargs: Optional[dict] = {},
+            rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(6),
             )-> pandas.DataFrame:
+        """
+        Performance inference using stochastic variational inference.
+
+        Parameters
+        ----------
+        autoguide : numpyro.infer.autoguide.AutoContinuous
+            Function to build guide
+        SVI_kwargs : Optional[dict], optional
+            Additional arguments to pass to numpyro.infer.SVI, by default {}
+        train_kwargs : Optional[dict], optional
+            Additional arguments to pass to utils.train_numpyro_svi_early_stop, by default {}
+        rkey : Optional[jax.random.PRNGKey], optional
+            PRNG key, by default jax.random.PRNGKey(6)
+
+        Returns
+        -------
+        pandas.DataFrame
+            ArviZ summary of posterior
+        """
         model_cur = self.build_model()
         guide = autoguide(model_cur)
 
         svi_kernel = SVI(model_cur,guide, Adam(0.1), **SVI_kwargs)
-        svi_result = train_numpyro_svi_early_stop(svi_kernel, **train_kwargs)
+        svi_result = train_numpyro_svi_early_stop(svi_kernel,rkey=rkey, **train_kwargs)
 
         svi_res_dict =  dict(guide = guide, model = model_cur, svi_result = svi_result)
         summary = self.injest_data(svi_res_dict=svi_res_dict)
@@ -239,14 +266,13 @@ class BaseFitter(ABC):
     def best_fit(self,
             rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3),
             )-> pandas.DataFrame:
-        """ Perform inference by finding the Maximum a-posteriori (MAP) with uncertainties calculated using the Laplace Approximnation. This is a good starting place to find a 'best fit' along with reasonable uncertainties.
+        """
+        Perform inference by finding the Maximum a-posteriori (MAP) with uncertainties calculated using the Laplace Approximnation. This is a good starting place to find a 'best fit' along with reasonable uncertainties.
 
         Parameters
         ----------
-        Nrun : Optional[int], optional
-            Number of training steps, by default 2000
         rkey : Optional[jax.random.PRNGKey], optional
-            _description_, by default jax.random.PRNGKey(3)
+            PRNG key, by default jax.random.PRNGKey(3)
 
         Returns
         -------
@@ -256,19 +282,31 @@ class BaseFitter(ABC):
 
         train_kwargs = dict(lr_init = 0.1, num_round = 5,frac_lr_decrease  = 0.25, patience = 100, optimizer = Adam)
         svi_kwargs = dict(loss = Trace_ELBO(3))
-        summary = self._train_SVI(infer.autoguide.AutoLaplaceApproximation, SVI_kwargs=svi_kwargs, train_kwargs=train_kwargs)
+        summary = self._train_SVI(infer.autoguide.AutoLaplaceApproximation, SVI_kwargs=svi_kwargs, train_kwargs=train_kwargs, rkey=rkey)
 
         return summary
     
     def train_flow(self,
             rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3),
         )-> pandas.DataFrame:
+        """
+        Perform inference using variational inference by fitting a Block Neural Autoregressive Flow (BNAF,https://arxiv.org/abs/1904.04676) to the posterior distribution. Usually faster than MCMC sampling but not guarenteed to converge accurately
 
-        train_kwargs = dict(lr_init = 5e-2, num_round = 2, patience = 100, optimizer = Adam)
-        svi_kwargs = dict(loss = Trace_ELBO(20))
-        guide_func = partial(infer.autoguide.AutoBNAFNormal, num_flows=3, hidden_factors=[10,10])
+        Parameters
+        ----------
+        rkey : Optional[jax.random.PRNGKey], optional
+            PRNG key, by default jax.random.PRNGKey(3)
 
-        summary = self._train_SVI(guide_func, SVI_kwargs=svi_kwargs, train_kwargs=train_kwargs)
+        Returns
+        -------
+        pandas.DataFrame
+            ArviZ summary of posterior
+        """
+        train_kwargs = dict(lr_init = 5e-2, num_round = 3, patience = 100, optimizer = Adam)
+        svi_kwargs = dict(loss = Trace_ELBO(32))
+        guide_func = partial(infer.autoguide.AutoBNAFNormal, num_flows=1, hidden_factors=[5,5,5])
+
+        summary = self._train_SVI(guide_func, SVI_kwargs=svi_kwargs, train_kwargs=train_kwargs, rkey=rkey)
 
         return summary
 
