@@ -54,7 +54,7 @@ def train_numpyro_svi_early_stop(
     Parameters
     ----------
     svi_class : SVI
-        Initialize numpyo SVI class, note that the optimizer will be overwritten
+        Initialized numpyo SVI class, note that the optimizer will be overwritten
     num_round : Optional[int], optional
         Number of training rounds, by default 3
     max_train : Optional[int], optional

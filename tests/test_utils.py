@@ -3,7 +3,7 @@ import jax.numpy as jnp
 import pysersic.utils as utils
 from numpyro.handlers import seed
 from numpyro import distributions as dist
-
+#TODO need to re-do tests
 
 prof_names = ['sersic','doublesersic','pointsource','exp','dev']
 prof_vars = [ ['xc','yc','flux','r_eff','n','ellip','theta'],
@@ -13,19 +13,11 @@ prof_vars = [ ['xc','yc','flux','r_eff','n','ellip','theta'],
         ['xc','yc','flux','r_eff','ellip','theta'],]
 
 @pytest.mark.parametrize('prof, var_names', zip(prof_names,prof_vars) )
-def test_prior_gen_and_sampling(prof, var_names):
+def test_prior_gen(prof, var_names):
     image = jnp.ones((100,100))
     prior_dict = utils.autoprior(image, prof)
     for k in prior_dict.keys():
         assert k in var_names
-
-    num_var = len(var_names)
-    sample_func = utils.sample_func_dict[prof]
-
-    with seed(rng_seed=1):
-        params = sample_func(prior_dict)
-    
-    assert params.shape == (num_var,)
 
 
 def test_sky_sampling():

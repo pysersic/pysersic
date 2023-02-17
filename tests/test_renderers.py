@@ -1,12 +1,15 @@
 from pysersic.rendering import PixelRenderer,FourierRenderer,HybridRenderer, BaseRenderer
+from pysersic.utils.rendering_utils import render_sersic_2d
 from astropy.convolution import Gaussian2DKernel
 import pytest
 import jax.numpy as jnp
 from jax.scipy.special import gammainc
+from scipy.integrate import dblquad
+from functools import partial
 
 kern = Gaussian2DKernel(x_stddev= 2.5)
 psf = kern.array
-err_tol = 0.04
+err_tol = 0.02 # 2% error tolerence
 
 @pytest.mark.parametrize("renderer", [PixelRenderer,FourierRenderer,HybridRenderer])
 @pytest.mark.parametrize("pos", [(50,50),(50.5,50.5),(50.25,50.25) ,(50.,50.5),(50.5,50.)]) 
@@ -24,20 +27,19 @@ def test_point_source(renderer,pos):
 @pytest.mark.parametrize("ellip", [0,0.5])
 @pytest.mark.parametrize("theta", [0,3.14/4.]) 
 def test_sersic(renderer,pos,re,n,ellip,theta):
-    flux = 10.
     renderer_test = renderer((200,200), psf)
-
+    flux = 10
     #Calcualte fraction of flux contained in image
-    bn = 1.9992*n - 0.3271
-    re = 10
-    r = 100
-    bn = 1.9992*n - 0.3271
-    x = bn*(r/re)**(1/n)
-    flux_frac = gammainc(2*n,x)
+    int_test = partial(render_sersic_2d, xc = pos[0],yc = pos[1], flux = 10, r_eff = re, n = n, ellip = ellip,theta = theta)
+    to_int = lambda x,y: float(int_test(x,y))
+
+    lo_fun = lambda x: 0.
+    hi_fun = lambda x: 200. 
+    flux_int,_ = dblquad(to_int, 0.,200., lo_fun,hi_fun,epsrel=5.e-3)
 
     im = renderer_test.render_sersic(pos[0],pos[1],flux,re,n,ellip,theta)
     total = float( jnp.sum(im) )
-    assert pytest.approx(flux*flux_frac, rel = err_tol) == total
+    assert pytest.approx(flux_int, rel = err_tol) == total
 
 @pytest.mark.parametrize("renderer", [PixelRenderer,FourierRenderer,HybridRenderer])
 @pytest.mark.parametrize("prof", ['exp','dev']) 
@@ -56,15 +58,14 @@ def test_exp_dev(renderer,prof,pos,re,ellip,theta):
         n=4.
 
     #Calcualte fraction of flux contained in image
-    bn = 1.9992*n - 0.3271
-    re = 10
-    r = 100
-    bn = 1.9992*n - 0.3271
-    x = bn*(r/re)**(1/n)
-    flux_frac = gammainc(2*n,x)
+    int_test = partial(render_sersic_2d, xc = pos[0],yc = pos[1], flux = 10, r_eff = re, n = n, ellip = ellip,theta = theta)
+    to_int = lambda x,y: float(int_test(x,y))
 
+    lo_fun = lambda x: 0.
+    hi_fun = lambda x: 200. 
+    flux_int,_ = dblquad(to_int, 0.,200., lo_fun,hi_fun,epsrel=5.e-3)
     total = float( jnp.sum(im) )
-    assert pytest.approx(flux*flux_frac, rel = err_tol) == total
+    assert pytest.approx(flux_int, rel = err_tol) == total
 
 
 def test_sky_rendering():

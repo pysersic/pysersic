@@ -31,7 +31,7 @@ def cash_loss(mod: jnp.array,
                 rms:jnp.array,
                 mask: jnp.array)-> float:
     """
-    Cash statistic based on Poisson statistics derrived in Cash (1979) (DOI 10.1086/156922) and advocated for in Erwin (2015) (https://arxiv.org/abs/1408.1097). Since the is based on Poisson statistics, scaling of the image will produce different confidence intervals. Additionally since a logorithm is taken of the model image, negative values will cause issues.
+    Cash statistic based on Poisson statistics derrived in Cash (1979) (DOI 10.1086/156922) and advocated for in Erwin (2015) (https://arxiv.org/abs/1408.1097). Since the is based on Poisson statistics, scaling of the image will produce different confidence intervals. Additionally, since a logorithm is taken of the model image, negative values associated with different sky models will cause issues.
 
     Parameters
     ----------
@@ -118,7 +118,7 @@ def student_t_loss(mod: jnp.array,
                 rms:jnp.array,
                 mask: jnp.array)-> float:
     """
-    Student T loss, with a fixed df = 5. This has fatter tails than Gaussian loss (or chi squared) so is less punishing to outliers
+    Student T loss, with a fixed df = 5. This has fatter tails than Gaussian loss (or chi squared) so is more resiliant to outliers
 
     Parameters
     ----------
@@ -144,7 +144,7 @@ def student_t_loss_free_nu(mod: jnp.array,
                 rms:jnp.array,
                 mask: jnp.array)-> float:
     """
-    Student T loss, with free df varied between 2 and 50. At low df, Student T has fatter tails than Gaussian loss (or chi squared) so is less punishing to outliers. At high df, the Student T approachs a Gaussian distribution
+    Student T loss, with free df varied between 2 and 50. At low df, Student T has fatter tails than Gaussian loss (or chi squared) so is so is more resiliant to outliers. At high df, the Student T approachs a Gaussian distribution
 
     Parameters
     ----------
