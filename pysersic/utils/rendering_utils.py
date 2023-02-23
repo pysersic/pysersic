@@ -283,9 +283,4 @@ def sersic_gauss_decomp(
 
     amps = amps*2*jnp.pi*sigmas*sigmas
 
-    #add back flux within frac start to try and compensates
-    bn = 1.9992*n-0.3271
-    f_inner = gammainc(2*n, bn*(frac_start**(1/n)))
-    amps = amps.at[0].add(f_inner*flux)
-
     return amps,sigmas

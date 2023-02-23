@@ -393,8 +393,8 @@ class FourierRenderer(BaseRenderer):
             im_shape: Iterable, 
             pixel_PSF: jax.numpy.array,
             frac_start: Optional[float] = 0.02,
-            frac_end: Optional[float] = 10., 
-            n_sigma: Optional[int] = 11, 
+            frac_end: Optional[float] = 15., 
+            n_sigma: Optional[int] = 13, 
             percision: Optional[int] = 10)-> None:
         """Initialize a Fourier renderer class
 
@@ -407,11 +407,11 @@ class FourierRenderer(BaseRenderer):
         frac_start : Optional[float], optional
             Fraction of r_eff for the smallest Gaussian component, by default 0.02
         frac_end : Optional[float], optional
-            Fraction of r_eff for the largest Gaussian component, by default 12.
+            Fraction of r_eff for the largest Gaussian component, by default 15.
         n_sigma : Optional[int], optional
-            Number of Gaussian Components, by default 11
+            Number of Gaussian Components, by default 13
         percision : Optional[int], optional
-            percision value used in calculating Gaussian components, see Shajib (2019) for more details, by default 5
+            percision value used in calculating Gaussian components, see Shajib (2019) for more details, by default 10
         """
         super().__init__(im_shape, pixel_PSF)
         self.frac_start = frac_start
@@ -596,8 +596,8 @@ class HybridRenderer(BaseRenderer):
             im_shape: Iterable, 
             pixel_PSF: jax.numpy.array,
             frac_start: Optional[float] = 0.02,
-            frac_end: Optional[float] = 10., 
-            n_sigma: Optional[int] = 11, 
+            frac_end: Optional[float] = 15., 
+            n_sigma: Optional[int] = 13, 
             num_pixel_render: Optional[int] = 3,
             percision: Optional[int] = 10)-> None:
         """Initialize a  HyrbridRenderer class
@@ -611,13 +611,13 @@ class HybridRenderer(BaseRenderer):
         frac_start : Optional[float], optional
             Fraction of r_eff for the smallest Gaussian component, by default 0.02
         frac_end : Optional[float], optional
-            Fraction of r_eff for the largest Gaussian component, by default 12.
+            Fraction of r_eff for the largest Gaussian component, by default 15.
         n_sigma : Optional[int], optional
-            Number of Gaussian Components, by default 11
+            Number of Gaussian Components, by default 13
         num_pixel_Render : Optional[int], optional
             Numeber of components to render in pixel space, counts back from largest component
         percision : Optional[int], optional
-            percision value used in calculating Gaussian components, see Shajib (2019) for more details, by default 5
+            percision value used in calculating Gaussian components, see Shajib (2019) for more details, by default 10
         """
         super().__init__(im_shape, pixel_PSF)
         self.frac_start = frac_start

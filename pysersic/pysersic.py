@@ -6,13 +6,13 @@ from numpyro import distributions as dist, infer
 import numpyro
 import arviz as az
 import pandas
-import optax
+from optax import adamw
 from abc import abstractmethod,ABC
 from functools import partial
 
-from numpyro.infer import SVI, Trace_ELBO
+from numpyro.infer import SVI, Trace_ELBO, TraceMeanField_ELBO
 from numpyro.infer.initialization import init_to_median
-from numpyro.optim import Adam
+from numpyro.optim import Adam, optax_to_numpyro
 from numpyro.infer.reparam import TransformReparam,CircularReparam
 from jax import random
 
@@ -257,9 +257,9 @@ class BaseFitter(ABC):
         guide = autoguide(model_cur)
 
         svi_kernel = SVI(model_cur,guide, Adam(0.1), **SVI_kwargs)
-        svi_result = train_numpyro_svi_early_stop(svi_kernel,rkey=rkey, **train_kwargs)
+        self.svi_result = train_numpyro_svi_early_stop(svi_kernel,rkey=rkey, **train_kwargs)
 
-        svi_res_dict =  dict(guide = guide, model = model_cur, svi_result = svi_result)
+        svi_res_dict =  dict(guide = guide, model = model_cur, svi_result = self.svi_result)
         summary = self.injest_data(svi_res_dict=svi_res_dict)
         return summary
 
@@ -280,7 +280,7 @@ class BaseFitter(ABC):
             ArviZ summary of posterior
         """
 
-        train_kwargs = dict(lr_init = 0.1, num_round = 5,frac_lr_decrease  = 0.25, patience = 100, optimizer = Adam)
+        train_kwargs = dict(lr_init = 0.1, num_round = 4,frac_lr_decrease  = 0.25, patience = 100, optimizer = Adam)
         svi_kwargs = dict(loss = Trace_ELBO(3))
         summary = self._train_SVI(infer.autoguide.AutoLaplaceApproximation, SVI_kwargs=svi_kwargs, train_kwargs=train_kwargs, rkey=rkey)
 
@@ -302,9 +302,11 @@ class BaseFitter(ABC):
         pandas.DataFrame
             ArviZ summary of posterior
         """
-        train_kwargs = dict(lr_init = 5e-2, num_round = 3, patience = 100, optimizer = Adam)
-        svi_kwargs = dict(loss = Trace_ELBO(32))
-        guide_func = partial(infer.autoguide.AutoBNAFNormal, num_flows=1, hidden_factors=[5,5,5])
+        opt_func = lambda lr: optax_to_numpyro(adamw(lr, weight_decay=1e-3))
+
+        train_kwargs = dict(lr_init = 4e-3, num_round = 3,frac_lr_decrease  = 0.25, patience = 100, optimizer = opt_func)
+        svi_kwargs = dict(loss = TraceMeanField_ELBO(8))
+        guide_func = partial(infer.autoguide.AutoBNAFNormal, num_flows = 1)
 
         summary = self._train_SVI(guide_func, SVI_kwargs=svi_kwargs, train_kwargs=train_kwargs, rkey=rkey)
 

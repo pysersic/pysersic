@@ -82,7 +82,7 @@ def gaussian_loss_w_frac(mod: jnp.array,
         loss =  sample("Loss", dist.Normal(mod, (1+ scatter_frac)*rms), obs=data)    
     return loss
 
-def gaussian_loss_w_const(mod: jnp.array,
+def gaussian_loss_w_sys(mod: jnp.array,
                 data: jnp.array,
                 rms:jnp.array,
                 mask: jnp.array)-> float:
@@ -164,4 +164,40 @@ def student_t_loss_free_nu(mod: jnp.array,
     nu = deterministic('nu_eff', nu_eff_base*48 + 2)
     with handlers.mask(mask = mask):
         loss =  sample("Loss", dist.StudentT(nu,mod,(nu/(nu-1))*rms), obs=data)    
+    return loss
+
+def student_t_loss_free_nu_and_sys(mod: jnp.array,
+                data: jnp.array,
+                rms:jnp.array,
+                mask: jnp.array)-> float:
+    """
+    Student T loss, with free df varied between 2 and 50. At low df, Student T has fatter tails than Gaussian loss (or chi squared) so is so is more resiliant to outliers. At high df, the Student T approachs a Gaussian distribution. In addition, add additional systematic increase such_that
+
+    $$ \sigma_{new,i}^2 = \sigma_{old,i}^2 + \sigma_{sys}^2 $$
+
+    \sigma_{sys} is a free parameter with a Normal prior, with loc = 0 and scale = mean(rms) truncated to ensure > 0
+
+
+    Parameters
+    ----------
+    mod : jnp.array
+        Model image
+    data : jnp.array
+        data to be fit
+    rms : jnp.array
+        per pixel 1-sigma uncertainties
+
+    Returns
+    -------
+    float
+        Sampled loss function
+    """
+    nu_eff_base = sample('nu_eff_base', dist.Uniform())
+    nu = deterministic('nu_eff', nu_eff_base*48 + 2)
+
+    sys_scatter_base = sample('sys_scatter_base', dist.TruncatedNormal(low = 0, scale = 1 ) )
+    sys_scatter = deterministic('sys_scatter', sys_scatter_base*jnp.mean(rms))
+    with handlers.mask(mask = mask):
+        rms_new = jnp.sqrt(rms**2 + sys_scatter**2)
+        loss =  sample("Loss", dist.StudentT(nu,mod,(nu/(nu-1))*rms_new), obs=data)    
     return loss

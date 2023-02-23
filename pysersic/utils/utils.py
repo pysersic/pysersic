@@ -84,7 +84,7 @@ def train_numpyro_svi_early_stop(
     @partial(jit, static_argnums = 1)
     def update_func(state,svi_class,lr):
         svi_class.__setattr__('optim', optimizer(lr))
-        state,loss = svi_class.update(state)
+        state,loss = svi_class.stable_update(state)
         return state,loss
 
     best_state, best_loss = update_func(init_state, svi_class, lr_init)
