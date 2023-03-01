@@ -9,6 +9,12 @@ from functools import partial
 import copy
 import tqdm
 
+@jit
+def render_tilted_plane_sky(X,Y,back,x_sl,y_sl ):
+    xmid = float(X.shape[0]/2.)
+    ymid = float(Y.shape[0]/2.)
+    return back + (X-xmid)*x_sl + (Y-ymid)*y_sl
+
 def sample_sky(
         prior_dict: dict,
         sky_type:str)-> jnp.array:
