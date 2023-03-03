@@ -33,6 +33,13 @@ class BasePrior(ABC):
     Base class for priors with sky sampling included
     """
     def __init__(self, sky_type = 'none') -> None:
+        """Initialize a base prior class
+
+        Parameters
+        ----------
+        sky_type : str, optional
+            Type of sky modle to use, one of: none,flat or tilted-plane, by default 'none'
+        """
         self.reparam_dict = {}
         self.sky_type = sky_type
         if not (self.sky_type in base_sky_types):
@@ -68,23 +75,89 @@ class BasePrior(ABC):
             self.reparam_dict['sky_y_sl'] = infer.reparam.TransformReparam()
             self.sample_sky = self.sample_sky_tilted_plane
 
-    def sample_sky_none(self,X,Y)-> float:
+    def sample_sky_none(self,X: jax.numpy.array,Y: jax.numpy.array)-> float:
+        """Simple wrapper to generate no sky
+
+        Parameters
+        ----------
+        X : jax.numpy.array
+            2d array, X pixel values
+        Y : jax.numpy.array
+            2d array, Y pixel values
+
+        Returns
+        -------
+        float = 0
+            returns 0
+        """
         return 0.
     
-    def sample_sky_flat(self,X,Y)-> float:
+    def sample_sky_flat(self,X: jax.numpy.array,Y: jax.numpy.array)-> float:
+        """
+        Sample and generate a flat sky background
+
+        Parameters
+        ----------
+        X : jax.numpy.array
+            2d array, X pixel values
+        Y : jax.numpy.array
+            2d array, Y pixel values
+
+        Returns
+        -------
+        float
+           sampled background value
+        """
         sky_back = sample('sky_back', self.sky_back_prior_dist)
         return sky_back
     
-    def sample_sky_tilted_plane(self,X,Y)-> jax.numpy.array:
+    def sample_sky_tilted_plane(self,X: jax.numpy.array,Y: jax.numpy.array)-> jax.numpy.array:
+        """
+        Sample and generate a tilted-plane sky background
+
+        Parameters
+        ----------
+        X : jax.numpy.array
+            2d array, X pixel values
+        Y : jax.numpy.array
+            2d array, Y pixel values
+
+        Returns
+        -------
+        jax.numpy.array
+           renderned sky background
+        """
         sky_back = sample('sky_back', self.sky_back_prior_dist)
         sky_x_sl = sample('sky_x_sl', self.sky_x_sl_prior_dist)
         sky_y_sl = sample('sky_y_sl', self.sky_y_sl_prior_dist)
         return render_tilted_plane_sky(X,Y, sky_back,sky_x_sl,sky_y_sl)
 
     def _set_dist(self, var_name: str, dist: dist.Distribution)-> None:
+        """Set prior for a given variable
+
+        Parameters
+        ----------
+        var_name : str
+            variable name
+        dist : dist.Distribution
+            Numpyro distribution object specifying prior
+        """
         self.__setattr__(var_name+'_prior_dist', dist)
 
     def _get_dist(self, var_name: str)-> dist.Distribution:
+        """
+        Get prior for a given variable
+
+        Parameters
+        ----------
+        var_name : str
+            variable name
+
+        Returns
+        -------
+        dist.Distribution
+            Numpyro distribution clas describing prior
+        """
         return self.__getattribute__(var_name +'_prior_dist')
     
 
@@ -92,7 +165,18 @@ class PySersicSourcePrior(BasePrior):
     """
     Class used for priors for single source fitting in PySersic
     """
-    def __init__(self, profile_type, sky_type = 'none',suffix = "") -> None:
+    def __init__(self, profile_type: str, sky_type: Optional[str] = 'none',suffix: Optional[str] =  "") -> None:
+        """Initialize PySersicSourcePrior class
+
+        Parameters
+        ----------
+        profile_type : str
+            Type of profile
+        sky_type : Optional[str], optional
+            Type of sky model to use, one of: none, flat, tilted-plane, by default 'none'
+        suffix : Optional[str], optional
+            Additional suffix to add to each variable name, used in PySersicMultiPrior, by default ""
+        """
         super().__init__(sky_type= sky_type)
         assert profile_type in base_profile_types
         self.profile_type = profile_type
@@ -110,6 +194,9 @@ class PySersicSourcePrior(BasePrior):
         return out
     
     def _build_dist_list(self)-> None:
+        """
+        Function to combine all distributions into list, sets self.dist_list
+        """
         self.dist_list = []
         assert self.check_vars() # check and make sure all is good
 
@@ -119,7 +206,14 @@ class PySersicSourcePrior(BasePrior):
         self.built = True
     
     def __call__(self) -> jax.numpy.array:
+        """
+        Sample variables from prior
 
+        Returns
+        -------
+        jax.numpy.array
+            sampled variables
+        """
         if not self.built: self._build_dist_list()
 
         arr = []
@@ -129,6 +223,24 @@ class PySersicSourcePrior(BasePrior):
         return jnp.array(arr)      
 
     def set_gaussian_prior(self,var_name: str, loc: float, scale: float) -> "PySersicSourcePrior":
+        """
+        Set a Gaussian prior for a variable
+
+        Parameters
+        ----------
+        var_name : str
+            variable name
+        loc : float
+            mean 
+        scale : float
+            standard deviation
+
+        Returns
+        -------
+        PySersicSourcePrior
+            returns self to allow chaining
+        """
+
         prior_dist = dist.TransformedDistribution(
             dist.Normal(),
             dist.transforms.AffineTransform(loc,scale),)
@@ -139,6 +251,24 @@ class PySersicSourcePrior(BasePrior):
         return self
     
     def set_uniform_prior(self, var_name:str, low: float,high: float)-> "PySersicSourcePrior":
+        """
+        Set a uniform prior for a variable
+
+        Parameters
+        ----------
+        var_name : str
+            variable name
+        low : float
+            lower bound
+        high : float
+            upper bound
+
+        Returns
+        -------
+        PySersicSourcePrior
+            returns self to allow chaining
+
+        """
         shift = low
         scale = high-low
         prior_dist = dist.TransformedDistribution(
@@ -155,6 +285,27 @@ class PySersicSourcePrior(BasePrior):
             scale:float, 
             low: Optional[float] = None,
             high: Optional[float] = None) -> "PySersicSourcePrior":
+        """
+        Set a truncated Gaussian prior for a given variable
+
+        Parameters
+        ----------
+        var_name : str
+            variable name
+        loc : float
+            mean
+        scale : float
+            standard deviation
+        low : Optional[float], optional
+            lower bound, by default None
+        high : Optional[float], optional
+            upper bound, by default None
+
+        Returns
+        -------
+        PySersicSourcePrior
+            Returns self to allow chaining
+        """
         if low is not None:
             low_scaled = (low - loc)/scale
         else:
@@ -179,6 +330,22 @@ class PySersicSourcePrior(BasePrior):
             var_name: str, 
             prior_dist: dist.Distribution, 
             reparam: Optional[infer.reparam.Reparam] = None)-> "PySersicSourcePrior":
+        """Set a custom distribution as the prior for a given variable
+
+        Parameters
+        ----------
+        var_name : str
+            variable name
+        prior_dist : dist.Distribution
+            Numpyro Distribution object describing prior
+        reparam : Optional[infer.reparam.Reparam], optional
+            Optional reparamaterization to use for variable, by default None
+
+        Returns
+        -------
+        PySersicSourcePrior
+            Returns self to allow chaining
+        """
         self._set_dist(var_name + self.suffix, prior_dist)
         if reparam is not None:
             self.reparam_dict[var_name + self.suffix] = reparam
@@ -186,6 +353,19 @@ class PySersicSourcePrior(BasePrior):
         return self
     
     def check_vars(self, verbose = False) -> bool:
+        """
+        Function to check if all variable for the specified profile type are set with no extras
+
+        Parameters
+        ----------
+        verbose : bool, optional
+            Wheter to print out missing and extra variables, by default False
+
+        Returns
+        -------
+        bool
+            True if all variable for given type are present with no extra, False otherwise
+        """
         missing = []
         for var in self.param_names:
             if not hasattr(self, f"{var + self.suffix}_prior_dist"):
@@ -214,7 +394,8 @@ class PySersicMultiPrior(BasePrior):
             catalog: Union[pandas.DataFrame,dict, np.recarray],
             sky_type: Optional[str] = 'none',     
             )-> None:
-        """Ingest a catalog-like data structure containing prior positions and parameters for multiple sources in a single image. The format of the catalog can be a `pandas.DataFrame`, `numpy` RecordArray, dictionary, or any other format so-long as the following fields exist and can be directly indexed: 'x', 'y', 'flux', 'r' and 'type'
+        """
+        Ingest a catalog-like data structure containing prior positions and parameters for multiple sources in a single image. The format of the catalog can be a `pandas.DataFrame`, `numpy` RecordArray, dictionary, or any other format so-long as the following fields exist and can be directly indexed: 'x', 'y', 'flux', 'r' and 'type'
 
         Parameters
         ----------
@@ -253,6 +434,13 @@ class PySersicMultiPrior(BasePrior):
             self.all_priors.append(prior)
             self.reparam_dict.update(prior.reparam_dict)
     def __call__(self) -> list:
+        """Sample prior for all sources
+
+        Returns
+        -------
+        list
+            a list of jax.numpy.arrays contraining sampled variables for each source
+        """
         all_params = []
         for prior_cur in self.all_priors:
             all_params.append(prior_cur())
