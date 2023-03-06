@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import jax
 import pandas
 import numpy as np
-from typing import Union, Optional, Callable, Iterable
+from typing import Union, Optional, Iterable
 from abc import ABC
 from .utils.utils import render_tilted_plane_sky
 
@@ -42,7 +42,7 @@ class BasePrior(ABC):
         """
         self.reparam_dict = {}
         self.sky_type = sky_type
-        if not (self.sky_type in base_sky_types):
+        if self.sky_type not in base_sky_types:
             raise AssertionError("Sky type must be one of: ", base_sky_types)
         elif self.sky_type == 'none':
             self.sample_sky = self.sample_sky_none
@@ -214,11 +214,12 @@ class PySersicSourcePrior(BasePrior):
         jax.numpy.array
             sampled variables
         """
-        if not self.built: self._build_dist_list()
+        if not self.built: 
+            self._build_dist_list()
 
         arr = []
-        for (param,dist) in zip(self.param_names,self.dist_list):
-            arr.append(sample(param+self.suffix, dist) )
+        for (param,prior) in zip(self.param_names,self.dist_list):
+            arr.append(sample(param+self.suffix, prior) )
 
         return jnp.array(arr)      
 
@@ -373,7 +374,7 @@ class PySersicSourcePrior(BasePrior):
         
         extra = []
         for (name, descrip) in self.repr_list:
-            if (not name in self.param_names) and (not 'sky' in name):
+            if (name not in self.param_names) and ('sky' not in name):
                 extra.append(name)
         if verbose:
             print ("Missing params for profile: ", missing)

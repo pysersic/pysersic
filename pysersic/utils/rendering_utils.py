@@ -1,10 +1,8 @@
 
 import jax
-from jax.scipy.special import gammainc
 import jax.numpy as jnp
 from typing import Union, Tuple
 from scipy.special import comb
-from functools import partial
 
 @jax.jit
 def sersic1D(

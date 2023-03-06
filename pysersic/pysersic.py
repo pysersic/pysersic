@@ -1,29 +1,27 @@
+from abc import ABC, abstractmethod
+from functools import partial
+from typing import Callable, Optional, Union
+
+import arviz as az
 import jax
 import jax.numpy as jnp
 import numpy as np
-import matplotlib.pyplot as plt
-from numpyro import distributions as dist, infer
 import numpyro
-import arviz as az
 import pandas
-from optax import adamw
-from abc import abstractmethod,ABC
-from functools import partial
-
-from numpyro.infer import SVI, Trace_ELBO, TraceMeanField_ELBO
-from numpyro.infer.initialization import init_to_median
-from numpyro.optim import Adam, optax_to_numpyro
-from numpyro.infer.reparam import TransformReparam,CircularReparam
 from jax import random
+from numpyro import infer
+from numpyro.infer import SVI, Trace_ELBO, TraceMeanField_ELBO
+from numpyro.optim import Adam, optax_to_numpyro
+from optax import adamw
 
-
-from pysersic.rendering import PixelRenderer,FourierRenderer,HybridRenderer,BaseRenderer, base_profile_params
-from pysersic.priors import autoprior,PySersicSourcePrior, PySersicMultiPrior
-
+from pysersic.rendering import (
+    BaseRenderer,
+    FourierRenderer,
+    HybridRenderer,
+)
+from pysersic.priors import PySersicSourcePrior, PySersicMultiPrior
 from pysersic.utils import gaussian_loss, train_numpyro_svi_early_stop
 
-
-from typing import Union, Optional, Callable
 ArrayLike = Union[np.array, jax.numpy.array]
 
 class BaseFitter(ABC):
@@ -133,7 +131,7 @@ class BaseFitter(ABC):
         if sampler is None and (svi_res_dict is None):
             raise AssertionError("Must svi results dictionary or sampled sampler")
 
-        elif not sampler is None:
+        elif sampler is not None:
             self.idata = az.from_numpyro(sampler)
         else:
             assert 'guide' in svi_res_dict.keys()
@@ -274,10 +272,11 @@ class BaseFitter(ABC):
         pandas.DataFrame
             ArviZ summary of posterior
         """
-        opt_func = lambda lr: optax_to_numpyro(adamw(lr, weight_decay=1e-3))
+        def opt_func(lr):
+            return optax_to_numpyro(adamw(lr, weight_decay=0.001))
 
-        train_kwargs = dict(lr_init = 4e-3, num_round = 3,frac_lr_decrease  = 0.25, patience = 100, optimizer = opt_func)
-        svi_kwargs = dict(loss = TraceMeanField_ELBO(8))
+        train_kwargs = dict(lr_init = 4e-3, num_round = 4,frac_lr_decrease  = 0.25, patience = 100, optimizer = opt_func)
+        svi_kwargs = dict(loss = TraceMeanField_ELBO(4))
         guide_func = partial(infer.autoguide.AutoBNAFNormal, num_flows = 1)
 
         summary = self._train_SVI(guide_func, SVI_kwargs=svi_kwargs, train_kwargs=train_kwargs, rkey=rkey)
@@ -333,7 +332,7 @@ class FitSingle(BaseFitter):
 
         super().__init__(data,rms,psf,loss_func = loss_func, mask = mask, renderer = renderer, renderer_kwargs = renderer_kwargs)
 
-        if not (prior.profile_type in self.renderer.profile_types):
+        if prior.profile_type not in self.renderer.profile_types:
             raise AssertionError('Profile must be one of:', self.renderer.profile_types)
         self.prior = prior
 
@@ -360,7 +359,7 @@ class FitSingle(BaseFitter):
 
             obs = out + sky
             
-            loss = self.loss_func(obs, self.data, self.rms, self.mask)
+            self.loss_func(obs, self.data, self.rms, self.mask)
         return model
 
     def render_best_fit(self):
