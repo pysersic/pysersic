@@ -251,7 +251,7 @@ class BaseFitter(ABC):
         """
 
         train_kwargs = dict(lr_init = 0.1, num_round = 4,frac_lr_decrease  = 0.25, patience = 100, optimizer = Adam)
-        svi_kwargs = dict(loss = Trace_ELBO(3))
+        svi_kwargs = dict(loss = Trace_ELBO(1))
         summary = self._train_SVI(infer.autoguide.AutoLaplaceApproximation, SVI_kwargs=svi_kwargs, train_kwargs=train_kwargs, rkey=rkey)
 
         return summary
@@ -276,7 +276,7 @@ class BaseFitter(ABC):
             return optax_to_numpyro(adamw(lr, weight_decay=0.001))
 
         train_kwargs = dict(lr_init = 4e-3, num_round = 4,frac_lr_decrease  = 0.25, patience = 100, optimizer = opt_func)
-        svi_kwargs = dict(loss = TraceMeanField_ELBO(4))
+        svi_kwargs = dict(loss = TraceMeanField_ELBO(16))
         guide_func = partial(infer.autoguide.AutoBNAFNormal, num_flows = 1)
 
         summary = self._train_SVI(guide_func, SVI_kwargs=svi_kwargs, train_kwargs=train_kwargs, rkey=rkey)

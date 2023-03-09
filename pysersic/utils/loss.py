@@ -3,7 +3,7 @@ from numpyro import distributions as dist, sample, handlers, factor,deterministi
 
 def gaussian_loss(mod: jnp.array,
                 data: jnp.array,
-                rms:jnp.array,
+                rms: jnp.array,
                 mask: jnp.array)-> float:
     """Basic Gaussian loss function using given uncertainties
 
@@ -28,7 +28,7 @@ def gaussian_loss(mod: jnp.array,
 
 def cash_loss(mod: jnp.array,
                 data: jnp.array,
-                rms:jnp.array,
+                rms: jnp.array,
                 mask: jnp.array)-> float:
     """
     Cash statistic based on Poisson statistics derrived in Cash (1979) (DOI 10.1086/156922) and advocated for in Erwin (2015) (https://arxiv.org/abs/1408.1097) for use in Sersic fitting. Since the is based on Poisson statistics, scaling of the image will produce different confidence intervals. Additionally, since a logorithm is taken of the model image, negative values associated with different sky models will cause issues.
@@ -54,7 +54,7 @@ def cash_loss(mod: jnp.array,
 
 def gaussian_loss_w_frac(mod: jnp.array,
                 data: jnp.array,
-                rms:jnp.array,
+                rms: jnp.array,
                 mask: jnp.array)-> float:
     """Gaussian loss with and additional fractional increase to all uncertainties such that,
 
@@ -84,7 +84,7 @@ def gaussian_loss_w_frac(mod: jnp.array,
 
 def gaussian_loss_w_sys(mod: jnp.array,
                 data: jnp.array,
-                rms:jnp.array,
+                rms: jnp.array,
                 mask: jnp.array)-> float:
     """Gaussian loss with and additional systematic increase such_that
 
@@ -115,7 +115,7 @@ def gaussian_loss_w_sys(mod: jnp.array,
 
 def student_t_loss(mod: jnp.array,
                 data: jnp.array,
-                rms:jnp.array,
+                rms: jnp.array,
                 mask: jnp.array)-> float:
     """
     Student T loss, with a fixed df = 5. This has fatter tails than Gaussian loss (or chi squared) so is more resiliant to outliers
@@ -136,12 +136,12 @@ def student_t_loss(mod: jnp.array,
     """
     nu = 5.
     with handlers.mask(mask = mask):
-        loss =  sample("Loss", dist.StudentT(nu,mod,jnp.sqrt((nu-2)/2)*rms), obs=data)    
+        loss =  sample("Loss", dist.StudentT(nu,mod,jnp.sqrt((nu-2.)/2.)*rms), obs=data)    
     return loss
 
 def student_t_loss_free_nu(mod: jnp.array,
                 data: jnp.array,
-                rms:jnp.array,
+                rms: jnp.array,
                 mask: jnp.array)-> float:
     """
     Student T loss, with free df varied between 3 and 50. At low df, Student T has fatter tails than Gaussian loss (or chi squared) so is so is more resiliant to outliers. At high df, the Student T approachs a Gaussian distribution
@@ -161,14 +161,15 @@ def student_t_loss_free_nu(mod: jnp.array,
         Sampled loss function
     """
     nu_eff_base = sample('nu_eff_base', dist.Uniform())
-    nu = deterministic('nu_eff', nu_eff_base*47 + 3)
+    nu = deterministic('nu_eff', nu_eff_base*47. + 3.)
+    rms_new = jnp.sqrt((nu-2.)/2.)*rms
     with handlers.mask(mask = mask):
-        loss =  sample("Loss", dist.StudentT(nu,mod,jnp.sqrt((nu-2)/2)*rms, obs=data) )
+        loss =  sample("Loss", dist.StudentT(nu, mod, rms_new), obs = data )
     return loss
 
 def student_t_loss_free_nu_and_sys(mod: jnp.array,
                 data: jnp.array,
-                rms:jnp.array,
+                rms: jnp.array,
                 mask: jnp.array)-> float:
     """
     Student T loss, with free df varied between 3 and 50. At low df, Student T has fatter tails than Gaussian loss (or chi squared) so is so is more resiliant to outliers. At high df, the Student T approachs a Gaussian distribution. In addition, add additional systematic increase such_that
@@ -193,11 +194,12 @@ def student_t_loss_free_nu_and_sys(mod: jnp.array,
         Sampled loss function
     """
     nu_eff_base = sample('nu_eff_base', dist.Uniform())
-    nu = deterministic('nu_eff', nu_eff_base*47 + 3)
+    nu = deterministic('nu_eff', nu_eff_base*47. + 3.)
 
     sys_scatter_base = sample('sys_scatter_base', dist.TruncatedNormal(low = 0, scale = 1 ) )
     sys_scatter = deterministic('sys_scatter', sys_scatter_base*jnp.mean(rms))
+    rms_new = jnp.sqrt((nu-2.)/2.)*jnp.sqrt(rms**2 + sys_scatter**2)
+
     with handlers.mask(mask = mask):
-        rms_new = jnp.sqrt(rms**2 + sys_scatter**2)
-        loss =  sample("Loss", dist.StudentT(nu,mod,jnp.sqrt((nu-2)/2)*rms_new), obs=data)    
+        loss =  sample("Loss", dist.StudentT(nu, mod, rms_new), obs=data)    
     return loss
