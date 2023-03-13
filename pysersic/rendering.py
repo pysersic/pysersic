@@ -2,8 +2,14 @@ import jax
 from jax import jit
 import jax.numpy as jnp
 import numpy as np
-from scipy.special import comb
-from .utils.rendering_utils import *
+from .utils.rendering_utils import (
+    render_gaussian_fourier,
+    render_pointsource_fourier,
+    render_gaussian_pixel,
+    render_sersic_2d,
+    calculate_etas_betas,
+    sersic_gauss_decomp,
+)
 from abc import abstractmethod
 from typing import Union, Optional, Iterable
 
