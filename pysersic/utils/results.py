@@ -18,7 +18,7 @@ from pysersic.rendering import (
     HybridRenderer,
 )
 from pysersic.utils import gaussian_loss, train_numpyro_svi_early_stop 
-
+import asdf 
 import pandas as pd 
 
 class PySersicResults():
@@ -35,6 +35,9 @@ class PySersicResults():
         self.mask = mask 
         self.loss_func = loss_func 
         self.renderer = renderer
+
+
+
 
     def __repr__(self)->str:
 
@@ -202,3 +205,26 @@ class PySersicResults():
     def compute_statistic(self,parameter:str,func:Callable,which='SVI'):
         chain = self.get_chains(which=which)
         return func(chain[parameter]).data
+    
+    
+    def save_result(self,fname):
+        tree = {} 
+        tree['input_data'] = {} 
+        tree['input_data']['image'] = self.data
+        tree['input_data']['rms'] = self.rms 
+        tree['input_data']['psf'] = self.psf
+        tree['input_data']['mask'] = self.mask
+        tree['loss_func'] = str(self.loss_func)
+        tree['renderer'] = str(self.renderer)
+        tree['contains_SVI_result'] =  f"{hasattr(self,'svi_results')}"
+        tree['contains_sampling_result'] =  f"{hasattr(self,'sampling_results')}"
+        tree['prior_info'] = self.prior.__str__()
+        if hasattr(self,'svi_results'):
+            tree['best_svi_model'] = self.render_best_fit_model(which='SVI')
+            tree['svi_posterior'] = self.svi_results.to_json()['posterior']
+        if hasattr(self,'sampling_results'):
+            tree['best_sampling_model'] = self.render_best_fit_model(which='sampler')
+            tree['sampling_posterior'] = self.sampling_results.to_json()['posterior']
+        
+        af = asdf.AsdfFile(tree=tree)
+        af.write_to(fname)
