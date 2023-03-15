@@ -104,7 +104,8 @@ class PySersicResults():
                 if ('base' in var) or ('auto' in var) or ('unwrapped' in var):
                     to_drop.append(var)
 
-        return data.posterior.drop_vars(to_drop)
+        data.posterior = data.posterior.drop_vars(to_drop)
+        return data
 
     def render_best_fit_mode(self,which='SVI'):
         assert which in ['svi','SVI','sampler']
