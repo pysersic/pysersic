@@ -183,9 +183,11 @@ class PySersicResults():
             plus = df.loc[i,q2] - df.loc[i,q1]
             minus = df.loc[i,q1] - df.loc[i,q0]
             if '_' in i:
-                use = i.split('_')[0] + f"_{{{i.split('_')[1]}}}"
+                use = i.split('_')[0] + f"_{{\\rm{i.split('_')[1]}}}"
             else:
                 use=i
+            if i =='theta':
+                use = r'\theta'
             out+=f"{use} & {df.loc[i,0.50]:.3f}_{{-{minus:.3f}}}^{{+{plus:.3f}}} \\\\ \n"
         out+="\enddata \n"
         out+="\end{deluxetable}"
