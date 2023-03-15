@@ -36,6 +36,16 @@ class PySersicResults():
         self.loss_func = loss_func 
         self.renderer = renderer
 
+    def __repr__(self)->str:
+
+        out = 'results object for pysersic fit\n'
+        out+= f"\t contains SVI results {hasattr(self,'svi_results')}\n"
+        out+= f"\t contains sampling results: {hasattr(self,'sampling_results')}\n"
+        
+
+
+
+
     def add_prior(self,prior):
         self.prior = prior 
     def injest_data(self, 
@@ -107,7 +117,7 @@ class PySersicResults():
         data.posterior = data.posterior.drop_vars(to_drop)
         return data
 
-    def render_best_fit_mode(self,which='SVI'):
+    def render_best_fit_model(self,which='SVI'):
         assert which in ['svi','SVI','sampler']
         if which.upper()=='SVI':
             medians = self.svi_results.posterior.median()
