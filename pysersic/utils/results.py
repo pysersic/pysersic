@@ -1,43 +1,89 @@
 # I'm imagineing some class to plot results and compare model to data
 # In imcascade the results class injests the fitter class which works well I think but definetly open to suggestions.
 import matplotlib.pyplot as plt
+from typing import Callable, Optional, Union
+import numpyro 
+import jax 
+from jax import random 
+import pandas 
+import numpy as np 
 from mpl_toolkits.axes_grid1.axes_divider import make_axes_locatable
 import corner
 import jax.numpy as jnp
+import arviz as az 
 
 class PySersicResults():
-    def __init__(self,result,svi,guide,infodict):
-        self.result = result
-        self.params = result.params 
-        self.svi = svi 
-        self.guide = guide 
-        self.infodict = infodict
-        
-    def quantiles(self,quantiles):
-        return self.guide.quantiles(self.params,quantiles)
-    def mean_model(self):
-        mean_params = self.quantiles([0.5])
-        param_dict = {}
-        for i in mean_params.keys():
-            param_dict[i] = mean_params[i][0]
-        #bf = FitSersic.Sersic2D(self.infodict['xgrid'],self.infodict['ygrid'],**param_dict,psf_fft=self.infodict['psf_fft'])
-        #return bf, param_dict
+    def __init__(self,):
+        pass 
+    def injest_data(self, 
+                sampler: Optional[numpyro.infer.mcmc.MCMC] =  None, 
+                svi_res_dict: Optional[dict] =  None,
+                purge_extra: Optional[bool] = True,
+                rkey: Optional[jax.random.PRNGKey] = random.PRNGKey(5)
+        ) -> pandas.DataFrame:
+        """Method to injest data from optimized SVI model or results of sampling. Sets the class attribute 'idata' with an Arviz InferenceData object.
 
-    def plot_bestfit(self):
-        bf, param_dict = self.mean_model() 
-        d = self.infodict['data']
-        fig, ax = plt.subplots(1,3,figsize=(10,3),constrained_layout=True)
-        ax[0].imshow(d,cmap='gray',origin='lower',vmin=jnp.mean(d)-3*jnp.std(d),vmax=jnp.mean(d)+3*jnp.std(d))
-        ax[1].imshow(bf,cmap='gray',origin='lower',vmin=jnp.mean(bf)-3*jnp.std(bf),vmax=jnp.mean(bf)+3*jnp.std(bf))
-        im2 = ax[2].imshow(d-bf,cmap='seismic',origin='lower',vmin=jnp.mean(d-bf)-3*jnp.std(d-bf),vmax=jnp.mean(d-bf)+3*jnp.std(d-bf))
-        ax_divider = make_axes_locatable(ax[2])
-        cax1 = ax_divider.append_axes("right", size="7%", pad="2%")
-        cb1 = fig.colorbar(im2, cax=cax1)
-        return fig, ax
+        Parameters
+        ----------
+        sampler : Optional[numpyro.infer.mcmc.MCMC], optional
+            numpyro sampler containing results
+        svi_res_dict : Optional[dict], optional
+            Dictionary containing 'guide', 'model' and 'svi_result' specifying a trained SVI model
+        purge_extra : Optional[bool], optional
+            Whether to purge variables containing 'auto', 'base' or 'unwrapped' often used in reparamaterization, by default True
+        rkey : Optional[jax.random.PRNGKey], optional
+            PRNG key to use, by default jax.random.PRNGKey(5)
 
-    def corner(self):
-        return corner.corner(self.inf_data)
+        Returns
+        -------
+        pandas.DataFrame
+            ArviZ Summary of results
+
+        Raises
+        ------
+        AssertionError
+            Must supply one of sampler or svi_dict
+        """
+
+        if sampler is None and (svi_res_dict is None):
+            raise AssertionError("Must svi results dictionary or sampled sampler")
+
+        elif sampler is not None:
+            self.sampled_results = az.from_numpyro(sampler)
+            self.sampled_results = self.parse(self.sampled_results,purge_extra=purge_extra)
+        else:
+            assert 'guide' in svi_res_dict.keys()
+            assert 'model' in svi_res_dict.keys()
+            assert 'svi_result' in svi_res_dict.keys()
+
+            post_raw = svi_res_dict['guide'].sample_posterior(rkey, svi_res_dict['svi_result'].params, sample_shape = ((1000,)))
+            #Convert to arviz
+            post_dict = {}
+            for key in post_raw:
+                post_dict[key] = post_raw[key][jnp.newaxis,]
+            self.svi_results = az.from_dict(post_dict)
+            self.svi_results = self.parse_injested_data(self.svi_results,purge_extra=purge_extra)
+
+
+        return
+
+    def parse_injested_data(self,data,purge_extra:bool=True):
+        var_names = list(data.posterior.to_dataframe().columns)
         
+        for var in var_names:
+            if 'theta' in var:
+                new_theta = np.remainder(data['posterior'][var]+np.pi, np.pi)
+                data['posterior'][var] = new_theta
+
+        if purge_extra:
+            to_drop = []
+            for var in var_names:
+                if ('base' in var) or ('auto' in var) or ('unwrapped' in var):
+                    to_drop.append(var)
+
+        return data.posterior.drop_vars(to_drop)
+
+    
 
 
         

@@ -20,7 +20,8 @@ from pysersic.rendering import (
     HybridRenderer,
 )
 from pysersic.priors import PySersicSourcePrior, PySersicMultiPrior
-from pysersic.utils import gaussian_loss, train_numpyro_svi_early_stop
+from pysersic.utils import gaussian_loss, train_numpyro_svi_early_stop 
+from pysersic.utils.results import PySersicResults
 
 ArrayLike = Union[np.array, jax.numpy.array]
 
@@ -56,7 +57,7 @@ class BaseFitter(ABC):
             Any additional arguments to pass to the renderer, by default {}
         """
 
-
+        self.results = PySersicResults()
         self.loss_func = loss_func
 
         if data.shape != rms.shape:
@@ -98,69 +99,7 @@ class BaseFitter(ABC):
         """
         self.prior_dict[parameter] = distribution
     
-    def injest_data(self, 
-                sampler: Optional[numpyro.infer.mcmc.MCMC] =  None, 
-                svi_res_dict: Optional[dict] =  None,
-                purge_extra: Optional[bool] = True,
-                rkey: Optional[jax.random.PRNGKey] = random.PRNGKey(5)
-        ) -> pandas.DataFrame:
-        """Method to injest data from optimized SVI model or results of sampling. Sets the class attribute 'idata' with an Arviz InferenceData object.
-
-        Parameters
-        ----------
-        sampler : Optional[numpyro.infer.mcmc.MCMC], optional
-            numpyro sampler containing results
-        svi_res_dict : Optional[dict], optional
-            Dictionary containing 'guide', 'model' and 'svi_result' specifying a trained SVI model
-        purge_extra : Optional[bool], optional
-            Whether to purge variables containing 'auto', 'base' or 'unwrapped' often used in reparamaterization, by default True
-        rkey : Optional[jax.random.PRNGKey], optional
-            PRNG key to use, by default jax.random.PRNGKey(5)
-
-        Returns
-        -------
-        pandas.DataFrame
-            ArviZ Summary of results
-
-        Raises
-        ------
-        AssertionError
-            Must supply one of sampler or svi_dict
-        """
-
-        if sampler is None and (svi_res_dict is None):
-            raise AssertionError("Must svi results dictionary or sampled sampler")
-
-        elif sampler is not None:
-            self.idata = az.from_numpyro(sampler)
-        else:
-            assert 'guide' in svi_res_dict.keys()
-            assert 'model' in svi_res_dict.keys()
-            assert 'svi_result' in svi_res_dict.keys()
-
-            post_raw = svi_res_dict['guide'].sample_posterior(rkey, svi_res_dict['svi_result'].params, sample_shape = ((1000,)))
-            #Convert to arviz
-            post_dict = {}
-            for key in post_raw:
-                post_dict[key] = post_raw[key][jnp.newaxis,]
-            self.idata = az.from_dict(post_dict)
-
-        var_names = list(self.idata.posterior.to_dataframe().columns)
-        
-        for var in var_names:
-            if 'theta' in var:
-                new_theta = np.remainder(self.idata['posterior'][var]+np.pi, np.pi)
-                self.idata['posterior'][var] = new_theta
-
-        if purge_extra:
-            to_drop = []
-            for var in var_names:
-                if ('base' in var) or ('auto' in var) or ('unwrapped' in var):
-                    to_drop.append(var)
-
-            self.idata.posterior = self.idata.posterior.drop_vars(to_drop)
-
-        return az.summary(self.idata)
+    
 
 
     def sample(self,
@@ -193,9 +132,9 @@ class BaseFitter(ABC):
         self.sampler =infer.MCMC(infer.NUTS(model, **sampler_kwargs),**mcmc_kwargs)
         self.sampler.run(rkey)
 
-        summary = self.injest_data(sampler = self.sampler)
-
-        return summary
+        self.results.injest_data(sampler = self.sampler)
+        return self.results 
+        
 
 
     def _train_SVI(self,
@@ -230,8 +169,8 @@ class BaseFitter(ABC):
         self.svi_result = train_numpyro_svi_early_stop(svi_kernel,rkey=rkey, **train_kwargs)
 
         svi_res_dict =  dict(guide = guide, model = model_cur, svi_result = self.svi_result)
-        summary = self.injest_data(svi_res_dict=svi_res_dict)
-        return summary
+        self.results.injest_data(svi_res_dict=svi_res_dict)
+        return self.results
 
     def best_fit(self,
             rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3),
