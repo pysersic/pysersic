@@ -41,7 +41,7 @@ class PySersicResults():
         out = 'results object for pysersic fit\n'
         out+= f"\t contains SVI results {hasattr(self,'svi_results')}\n"
         out+= f"\t contains sampling results: {hasattr(self,'sampling_results')}\n"
-        
+        return out 
 
 
 
