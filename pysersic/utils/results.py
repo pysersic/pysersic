@@ -84,6 +84,3 @@ class PySersicResults():
         return data.posterior.drop_vars(to_drop)
 
     
-
-
-        
