@@ -221,10 +221,10 @@ class PySersicResults():
         tree['prior_info'] = self.prior.__str__()
         if hasattr(self,'svi_results'):
             tree['best_svi_model'] = self.render_best_fit_model(which='SVI')
-            tree['svi_posterior'] = self.svi_results.to_json()['posterior']
+            tree['svi_posterior'] = self.svi_results.to_dict()['posterior']
         if hasattr(self,'sampling_results'):
             tree['best_sampling_model'] = self.render_best_fit_model(which='sampler')
-            tree['sampling_posterior'] = self.sampling_results.to_json()['posterior']
+            tree['sampling_posterior'] = self.sampling_results.to_dict()['posterior']
         
         af = asdf.AsdfFile(tree=tree)
         af.write_to(fname)
