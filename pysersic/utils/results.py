@@ -141,10 +141,10 @@ class PySersicResults():
 
     def corner(self,which='SVI',**kwargs):
         if which =='SVI':
-            return corner.corner(self.svi_results,show_titles=True,quantiles=[16.,50.,84.,],**kwargs)
+            return corner.corner(self.svi_results,show_titles=True,quantiles=[.16,.50,.84,],**kwargs)
         elif which =='sampler':
-            return corner.corner(self.sampling_results,show_titles=True,quantiles=[16.,50.,84.,],**kwargs)
+            return corner.corner(self.sampling_results,show_titles=True,quantiles=[.16,.50,.84,],**kwargs)
         elif which=='both':
-            fig = corner.corner(self.sampling_results, alpha = 0.5, color = 'C0',show_titles=True,quantiles=[16.,50.,84.,])
+            fig = corner.corner(self.sampling_results, alpha = 0.5, color = 'C0',show_titles=True,quantiles=[.16,.50,.84,])
             corner.corner(self.svi_results,alpha = 0.5, color = 'C1', fig = fig,show_titles=True,)
             return fig 
