@@ -11,6 +11,15 @@ from mpl_toolkits.axes_grid1.axes_divider import make_axes_locatable
 import corner
 import jax.numpy as jnp
 import arviz as az 
+ArrayLike = Union[np.array, jax.numpy.array]
+from pysersic.rendering import (
+    BaseRenderer,
+    FourierRenderer,
+    HybridRenderer,
+)
+from pysersic.utils import gaussian_loss, train_numpyro_svi_early_stop 
+
+
 
 class PySersicResults():
     def __init__(self,
@@ -63,8 +72,8 @@ class PySersicResults():
             raise AssertionError("Must svi results dictionary or sampled sampler")
 
         elif sampler is not None:
-            self.sampled_results = az.from_numpyro(sampler)
-            self.sampled_results = self.parse(self.sampled_results,purge_extra=purge_extra)
+            self.sampling_results = az.from_numpyro(sampler)
+            self.sampling_results = self.parse(self.sampling_results,purge_extra=purge_extra)
         else:
             assert 'guide' in svi_res_dict.keys()
             assert 'model' in svi_res_dict.keys()
@@ -97,10 +106,14 @@ class PySersicResults():
 
         return data.posterior.drop_vars(to_drop)
 
-    def render_best_fit(self,which='SVI'):
-        assert which in ['svi','SVI','sampling']
+    def render_best_fit_mode(self,which='SVI'):
+        assert which in ['svi','SVI','sampler']
         if which.upper()=='SVI':
             medians = self.svi_results.posterior.median()
+            median_params = jnp.array([medians[name].data for name in self.prior.param_names])
+            mod = self.renderer.render_source(median_params, self.prior.profile_type)
+        elif which == 'sampler':
+            medians = self.sampling_results.posterior.median() 
             median_params = jnp.array([medians[name].data for name in self.prior.param_names])
             mod = self.renderer.render_source(median_params, self.prior.profile_type)
         return mod
