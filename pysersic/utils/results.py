@@ -210,21 +210,26 @@ class PySersicResults():
     def save_result(self,fname):
         tree = {} 
         tree['input_data'] = {} 
-        tree['input_data']['image'] = self.data
-        tree['input_data']['rms'] = self.rms 
-        tree['input_data']['psf'] = self.psf
-        tree['input_data']['mask'] = self.mask
-        tree['loss_func'] = str(self.loss_func)
-        tree['renderer'] = str(self.renderer)
-        tree['contains_SVI_result'] =  f"{hasattr(self,'svi_results')}"
-        tree['contains_sampling_result'] =  f"{hasattr(self,'sampling_results')}"
-        tree['prior_info'] = self.prior.__str__()
-        if hasattr(self,'svi_results'):
-            tree['best_svi_model'] = self.render_best_fit_model(which='SVI')
-            tree['svi_posterior'] = self.svi_results.to_dict()['posterior']
-        if hasattr(self,'sampling_results'):
-            tree['best_sampling_model'] = self.render_best_fit_model(which='sampler')
-            tree['sampling_posterior'] = self.sampling_results.to_dict()['posterior']
-        
+        tree['input_data']['image'] = np.array(self.results.data)
+        tree['input_data']['rms'] = np.array(self.results.rms)
+        tree['input_data']['psf'] = np.array(self.results.psf)
+        tree['input_data']['mask'] = np.array(self.results.mask)
+        tree['loss_func'] = str(self.results.loss_func)
+        tree['renderer'] = str(self.results.renderer)
+        tree['contains_SVI_result'] =  f"{hasattr(self.results,'svi_results')}"
+        tree['contains_sampling_result'] =  f"{hasattr(self.results,'sampling_results')}"
+        tree['prior_info'] = self.results.prior.__str__()
+        if hasattr(self.results,'svi_results'):
+            tree['best_svi_model'] = np.array(self.results.render_best_fit_model(which='SVI'))
+            tree['svi_posterior'] = self.results.svi_results.to_dict()['posterior']
+            for i in tree['svi_posterior']:
+                i = np.array(i)
+        if hasattr(self.results,'sampling_results'):
+            tree['best_sampling_model'] = np.array(self.results.render_best_fit_model(which='sampler'))
+            tree['sampling_posterior'] = self.results.sampling_results.to_dict()['posterior']
+            for i in tree['sampling_posterior']:
+                i = np.array(i)
         af = asdf.AsdfFile(tree=tree)
+        if not fname.endswith('.asdf'):
+            fname+='.asdf'
         af.write_to(fname)
