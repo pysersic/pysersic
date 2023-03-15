@@ -185,4 +185,4 @@ class PySersicResults():
             out+=f"{i} & {df.loc[i,0.50]:.3f}_{{-{minus:.3f}}}^{{+{plus:.3f}}} \\\\ \n"
         out+="\enddata \n"
         out+="\end{deluxetable}"
-        return out 
+        print(out)
