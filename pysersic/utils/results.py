@@ -168,8 +168,8 @@ class PySersicResults():
 
 
     def latex_table(self,which='SVI',quantiles=[0.16,0.5,0.84]):
-        out = "\begin{deluxetable}{lr}[b]\n"
-        out+= "\tablehead{\n"
+        out = "\\begin{deluxetable}{lr}[b]\n"
+        out+= "\\tablehead{\n"
         out+= "\colhead{Parameter} & \colhead{\hspace{4.5cm}Value\hspace{.5cm}}}\n"
         out+="\caption{Best Fit Parameters for Pysersic Fit}}\n"
         out+="\startdata \n"
@@ -183,6 +183,6 @@ class PySersicResults():
             plus = df.loc[i,q2] - df.loc[i,q1]
             minus = df.loc[i,q1] - df.loc[i,q0]
             out+=f"{i} & {df.loc[i,0.50]:.3f}_{{-{minus:.3f}}}^{{+{plus:.3f}}} \\\\ \n"
-            out+="\enddata \n"
-            out+="\end{deluxetable}"
+        out+="\enddata \n"
+        out+="\end{deluxetable}"
         return out 
