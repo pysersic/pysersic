@@ -171,7 +171,7 @@ class PySersicResults():
         out = "\\begin{deluxetable}{lr}[b]\n"
         out+= "\\tablehead{\n"
         out+= "\colhead{Parameter} & \colhead{\hspace{4.5cm}Value\hspace{.5cm}}}\n"
-        out+="\caption{Best Fit Parameters for Pysersic Fit}}\n"
+        out+="\caption{Best Fit Parameters for Pysersic Fit}\n"
         out+="\startdata \n"
         df = self.retrieve_param_quantiles(which=which,quantiles=quantiles,return_type='pandas')
         if len(df.columns)!=3:
@@ -182,6 +182,8 @@ class PySersicResults():
             q2 = quantiles[2]
             plus = df.loc[i,q2] - df.loc[i,q1]
             minus = df.loc[i,q1] - df.loc[i,q0]
+            if '_' in i:
+                i = i.split('_')[0] + f"_{{{i.split('_')[1]}}}"
             out+=f"{i} & {df.loc[i,0.50]:.3f}_{{-{minus:.3f}}}^{{+{plus:.3f}}} \\\\ \n"
         out+="\enddata \n"
         out+="\end{deluxetable}"
