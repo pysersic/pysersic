@@ -137,3 +137,10 @@ class PySersicResults():
             median_params = jnp.array([medians[name].data for name in self.prior.param_names])
             mod = self.renderer.render_source(median_params, self.prior.profile_type)
         return mod
+    
+
+    def corner(self,which='SVI',**kwargs):
+        if which =='SVI':
+            return corner.corner(self.svi_results,show_titles=True,quantiles=[16.,50.,84.,],**kwargs)
+        elif which =='sampler':
+            return corner.corner(self.sampling_results,show_titles=True,quantiles=[16.,50.,84.,],**kwargs)
