@@ -57,7 +57,7 @@ class BaseFitter(ABC):
             Any additional arguments to pass to the renderer, by default {}
         """
 
-        self.results = PySersicResults()
+        
         self.loss_func = loss_func
 
         if data.shape != rms.shape:
@@ -74,6 +74,7 @@ class BaseFitter(ABC):
         self.renderer = renderer(data.shape, jnp.array(psf), **renderer_kwargs)
     
         self.prior_dict = {}
+        self.results = PySersicResults(data=self.data,rms=self.rms,psf=psf,mask=mask,loss_func=loss_func,renderer=self.renderer)
 
     
     def set_loss_func(self, loss_func: Callable) -> None:
@@ -267,6 +268,7 @@ class FitSingle(BaseFitter):
         if prior.profile_type not in self.renderer.profile_types:
             raise AssertionError('Profile must be one of:', self.renderer.profile_types)
         self.prior = prior
+        self.results.add_prior(prior)
 
 
     def build_model(self,) -> Callable:
@@ -294,12 +296,7 @@ class FitSingle(BaseFitter):
             self.loss_func(obs, self.data, self.rms, self.mask)
         return model
 
-    def render_best_fit(self):
-        assert hasattr(self, 'idata')
-        medians = self.idata.posterior.median()
-        median_params = jnp.array([medians[name].data for name in self.prior.param_names])
-        mod = self.renderer.render_source(median_params, self.prior.profile_type)
-        return mod
+    
 
 class FitMulti(BaseFitter):
     """
@@ -337,6 +334,7 @@ class FitMulti(BaseFitter):
         """
         super().__init__(data,rms,psf,mask = mask,loss_func = loss_func,renderer = renderer, renderer_kwargs = renderer_kwargs)
         self.prior = prior
+        self.results.add_prior(prior)
         if type(self.renderer) not in [FourierRenderer,HybridRenderer]:
             raise AssertionError('Currently only FourierRenderer and HybridRenderer Supported for FitMulti')
     

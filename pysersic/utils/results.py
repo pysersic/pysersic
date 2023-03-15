@@ -13,8 +13,22 @@ import jax.numpy as jnp
 import arviz as az 
 
 class PySersicResults():
-    def __init__(self,):
-        pass 
+    def __init__(self,
+                data: ArrayLike,
+                rms: ArrayLike,
+                psf: ArrayLike,
+                mask: Optional[ArrayLike] = None,
+                loss_func: Optional[Callable] = gaussian_loss,
+                renderer: Optional[BaseRenderer] =  HybridRenderer,):
+        self.data = data 
+        self.rms = rms 
+        self.psf = psf 
+        self.mask = mask 
+        self.loss_func = loss_func 
+        self.renderer = renderer
+
+    def add_prior(self,prior):
+        self.prior = prior 
     def injest_data(self, 
                 sampler: Optional[numpyro.infer.mcmc.MCMC] =  None, 
                 svi_res_dict: Optional[dict] =  None,
@@ -83,4 +97,10 @@ class PySersicResults():
 
         return data.posterior.drop_vars(to_drop)
 
-    
+    def render_best_fit(self,which='SVI'):
+        assert which in ['svi','SVI','sampling']
+        if which.upper()=='SVI':
+            medians = self.svi_results.posterior.median()
+            median_params = jnp.array([medians[name].data for name in self.prior.param_names])
+            mod = self.renderer.render_source(median_params, self.prior.profile_type)
+        return mod
