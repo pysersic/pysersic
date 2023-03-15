@@ -167,8 +167,22 @@ class PySersicResults():
             return df 
 
 
-    def param_table(self,which='SVI',latex=False):
-        if not latex:
-            out = f"Results Table for {which} fit to image\n"
-            out+="-"*len(out)
-        
+    def latex_table(self,which='SVI',quantiles=[0.16,0.5,0.84]):
+        out = "\begin{deluxetable}{lr}[b]\n"
+        out+= "\tablehead{\n"
+        out+= "\colhead{Parameter} & \colhead{\hspace{4.5cm}Value\hspace{.5cm}}}\n"
+        out+="\caption{Best Fit Parameters for Pysersic Fit}}\n"
+        out+="\startdata \n"
+        df = self.retrieve_param_quantiles(which=which,quntiles=quantiles,return_type='pandas')
+        if len(df.columns)!=3:
+            raise AssertionError('Must Choose 3 quantile positions for +/- calculation')
+        for i in df.index:
+            q0 = quantiles[0]
+            q1 = quantiles[1]
+            q2 = quantiles[2]
+            plus = df.loc[i,q2] - df.loc[i,q1]
+            minus = df.loc[i,q1] - df.loc[i,q0]
+            out+=f"{i} & {df.loc[i,0.50]:.3f}_{{-{minus:.3f}}}^{{+{plus:.3f}}} \\\\ \n"
+            out+="\enddata \n"
+            out+="\end{deluxetable}"
+        return out 
