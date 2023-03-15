@@ -365,8 +365,8 @@ class FitSingle(BaseFitter):
     def render_best_fit(self):
         assert hasattr(self, 'idata')
         medians = self.idata.posterior.median()
-        median_params = jnp.array([medians[name].data for name in self.param_names])
-        mod = self.renderer.render_source(median_params, self.profile_type)
+        median_params = jnp.array([medians[name].data for name in self.prior.param_names])
+        mod = self.renderer.render_source(median_params, self.prior.profile_type)
         return mod
 
 class FitMulti(BaseFitter):
