@@ -173,7 +173,7 @@ class PySersicResults():
         out+= "\colhead{Parameter} & \colhead{\hspace{4.5cm}Value\hspace{.5cm}}}\n"
         out+="\caption{Best Fit Parameters for Pysersic Fit}}\n"
         out+="\startdata \n"
-        df = self.retrieve_param_quantiles(which=which,quntiles=quantiles,return_type='pandas')
+        df = self.retrieve_param_quantiles(which=which,quantiles=quantiles,return_type='pandas')
         if len(df.columns)!=3:
             raise AssertionError('Must Choose 3 quantile positions for +/- calculation')
         for i in df.index:
