@@ -19,7 +19,7 @@ from pysersic.rendering import (
 )
 from pysersic.utils import gaussian_loss, train_numpyro_svi_early_stop 
 
-
+import pandas as pd 
 
 class PySersicResults():
     def __init__(self,
@@ -148,3 +148,27 @@ class PySersicResults():
             fig = corner.corner(self.sampling_results, alpha = 0.5, color = 'C0',show_titles=True,quantiles=[.16,.50,.84,])
             corner.corner(self.svi_results,alpha = 0.5, color = 'C1', fig = fig,show_titles=True,)
             return fig 
+        
+    def retrieve_param_quantiles(self,which='SVI',quantiles=[0.16,0.5,0.84],return_type='dict'):
+        if which == 'SVI':
+            r = self.svi_results 
+        else:
+            r = self.sampling_results
+        names = list(r.quantile(quantiles).posterior)
+        xx = r.quantile(quantiles).posterior.to_dict()
+        out = {} 
+        for i in xx['data_vars'].keys():
+            out[i] = xx['data_vars'][i]['data']
+        if return_type=='dict':
+            return out
+        else:
+            df = pd.DataFrame.from_dict(out).T
+            df.columns = quantiles
+            return df 
+
+
+    def param_table(self,which='SVI',latex=False):
+        if not latex:
+            out = f"Results Table for {which} fit to image\n"
+            out+="-"*len(out)
+        
