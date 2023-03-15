@@ -117,6 +117,15 @@ class PySersicResults():
         data.posterior = data.posterior.drop_vars(to_drop)
         return data
 
+
+    def svi_summary(self):
+        assert hasattr(self,'svi_results') 
+        return az.summary(self.svi_results)
+    
+    def sampling_summary(self):
+        assert hasattr(self,'sampling_results')
+        return az.summary(self.sampling_results)
+
     def render_best_fit_model(self,which='SVI'):
         assert which in ['svi','SVI','sampler']
         if which.upper()=='SVI':
