@@ -200,5 +200,5 @@ class PySersicResults():
             return az.extract(self.sampling_results)
     
     def compute_statistic(self,parameter:str,func:Callable,which='SVI'):
-         chain = self.get_chains(which=which)
-         return func(chain[parameter])
+        chain = self.get_chains(which=which)
+        return func(chain[parameter]).data
