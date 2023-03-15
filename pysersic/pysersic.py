@@ -226,13 +226,6 @@ class BaseFitter(ABC):
     def build_model(self,):
         raise NotImplementedError
 
-    @abstractmethod
-    def render_best_fit(self,):
-        raise NotImplementedError
-
-    # TODO Some analysis stuff here
-    def plot_residuals(self):
-        return None
 
 class FitSingle(BaseFitter):
     """
