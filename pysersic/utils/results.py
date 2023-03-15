@@ -183,8 +183,10 @@ class PySersicResults():
             plus = df.loc[i,q2] - df.loc[i,q1]
             minus = df.loc[i,q1] - df.loc[i,q0]
             if '_' in i:
-                i = i.split('_')[0] + f"_{{{i.split('_')[1]}}}"
-            out+=f"{i} & {df.loc[i,0.50]:.3f}_{{-{minus:.3f}}}^{{+{plus:.3f}}} \\\\ \n"
+                use = i.split('_')[0] + f"_{{{i.split('_')[1]}}}"
+            else:
+                use=i
+            out+=f"{use} & {df.loc[i,0.50]:.3f}_{{-{minus:.3f}}}^{{+{plus:.3f}}} \\\\ \n"
         out+="\enddata \n"
         out+="\end{deluxetable}"
         print(out)
