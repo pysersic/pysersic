@@ -183,7 +183,7 @@ class PySersicResults():
             plus = df.loc[i,q2] - df.loc[i,q1]
             minus = df.loc[i,q1] - df.loc[i,q0]
             if '_' in i:
-                use = i.split('_')[0] + f"_{{\\rm{i.split('_')[1]}}}"
+                use = i.split('_')[0] + f"_{{\\rm {i.split('_')[1]}}}"
             else:
                 use=i
             if i =='theta':
