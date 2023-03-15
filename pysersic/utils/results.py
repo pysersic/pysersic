@@ -73,7 +73,7 @@ class PySersicResults():
 
         elif sampler is not None:
             self.sampling_results = az.from_numpyro(sampler)
-            self.sampling_results = self.parse(self.sampling_results,purge_extra=purge_extra)
+            self.sampling_results = self.parse_injested_data(self.sampling_results,purge_extra=purge_extra)
         else:
             assert 'guide' in svi_res_dict.keys()
             assert 'model' in svi_res_dict.keys()
