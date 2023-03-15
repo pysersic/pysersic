@@ -192,3 +192,13 @@ class PySersicResults():
         out+="\enddata \n"
         out+="\end{deluxetable}"
         print(out)
+
+    def get_chains(self,which='SVI'):
+        if which=='SVI':
+            return az.extract(self.results.svi_results)
+        elif which=='sampler':
+            return az.extract(self.results.sampling_results)
+    
+    def compute_statistic(self,parameter:str,func:Callable,which='SVI'):
+         chain = self.get_chains(which=which)
+         return func(chain[parameter])
