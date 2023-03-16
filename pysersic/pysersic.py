@@ -65,6 +65,7 @@ class BaseFitter(ABC):
             
         self.data = jnp.array(data) 
         self.rms = jnp.array(rms)
+        self.psf = jnp.array(psf)
 
         if mask is None:
             self.mask = jnp.ones_like(self.data).astype(jnp.bool_)
@@ -74,8 +75,6 @@ class BaseFitter(ABC):
         self.renderer = renderer(data.shape, jnp.array(psf), **renderer_kwargs)
     
         self.prior_dict = {}
-        self.svi_results = PySersicResults(data=self.data,rms=self.rms,psf=psf,mask=mask,loss_func=loss_func,renderer=self.renderer)
-        self.sampling_results = PySersicResults(data=self.data,rms=self.rms,psf=psf,mask=mask,loss_func=loss_func,renderer=self.renderer)
     
     def set_loss_func(self, loss_func: Callable) -> None:
         """Set loss function to be used for inference
@@ -132,7 +131,8 @@ class BaseFitter(ABC):
         
         self.sampler =infer.MCMC(infer.NUTS(model, **sampler_kwargs),**mcmc_kwargs)
         self.sampler.run(rkey)
-
+        self.sampling_results = PySersicResults(data=self.data,rms=self.rms,psf=self.psf,mask=self.mask,loss_func=self.loss_func,renderer=self.renderer)
+        self.sampling_results.add_prior(self.prior)
         self.sampling_results.injest_data(sampler = self.sampler)
         return self.results 
         
@@ -170,6 +170,8 @@ class BaseFitter(ABC):
         self.svi_result = train_numpyro_svi_early_stop(svi_kernel,rkey=rkey, **train_kwargs)
 
         svi_res_dict =  dict(guide = guide, model = model_cur, svi_result = self.svi_result)
+        self.svi_results = PySersicResults(data=self.data,rms=self.rms,psf=self.psf,mask=self.mask,loss_func=self.loss_func,renderer=self.renderer)
+        self.svi_results.add_prior(self.prior)
         self.svi_results.injest_data(svi_res_dict=svi_res_dict)
         return self.results
 
@@ -268,8 +270,8 @@ class FitSingle(BaseFitter):
         if prior.profile_type not in self.renderer.profile_types:
             raise AssertionError('Profile must be one of:', self.renderer.profile_types)
         self.prior = prior
-        self.svi_results.add_prior(prior)
-        self.sampling_results.add_prior(prior)
+        
+        
 
 
     def build_model(self,) -> Callable:
