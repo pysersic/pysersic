@@ -467,19 +467,18 @@ def autoprior(image: jax.numpy.array,
     dict
         Dictionary containing numpyro Distribution objects for each parameter
     """
-    if mask is not None: 
-        image = image * np.logical_not(mask)
+  
     if profile_type == 'sersic':
-        prior_dict = generate_sersic_prior(image, sky_type = sky_type)
+        prior_dict = generate_sersic_prior(image, sky_type = sky_type,mask=mask)
     
     elif profile_type == 'doublesersic':
-        prior_dict = generate_doublesersic_prior(image, sky_type = sky_type)
+        prior_dict = generate_doublesersic_prior(image, sky_type = sky_type,mask=mask)
 
     elif profile_type == 'pointsource':
-        prior_dict = generate_pointsource_prior(image, sky_type = sky_type)
+        prior_dict = generate_pointsource_prior(image, sky_type = sky_type,mask=mask)
    
     elif profile_type in ['exp','dev']:
-        prior_dict = generate_exp_dev_prior(image, sky_type = sky_type)
+        prior_dict = generate_exp_dev_prior(image, sky_type = sky_type,mask=mask)
     
     return prior_dict
 
