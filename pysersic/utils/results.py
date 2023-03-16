@@ -12,6 +12,7 @@ import corner
 import jax.numpy as jnp
 import arviz as az 
 ArrayLike = Union[np.array, jax.numpy.array]
+ListLike = Union[np.array,jax.numpy.array,list]
 from pysersic.rendering import (
     BaseRenderer,
     FourierRenderer,
@@ -20,15 +21,34 @@ from pysersic.rendering import (
 from pysersic.utils import gaussian_loss, train_numpyro_svi_early_stop 
 import asdf 
 import pandas as pd 
+import xarray 
 
 class PySersicResults():
     def __init__(self,
                 data: ArrayLike,
                 rms: ArrayLike,
                 psf: ArrayLike,
+                loss_func:Callable,
+                renderer: BaseRenderer,
                 mask: Optional[ArrayLike] = None,
-                loss_func: Optional[Callable] = gaussian_loss,
-                renderer: Optional[BaseRenderer] =  HybridRenderer,):
+                ):
+        """Initialize Results Object
+
+        Parameters
+        ----------
+        data : ArrayLike
+            data from fitter
+        rms : ArrayLike
+            rms from fitter
+        psf : ArrayLike
+            psf from fitter
+        loss_func : Callable
+            the loss function chosen
+        renderer : BaseRenderer
+            the renderer created by the fitter
+        mask : Optional[ArrayLike], optional
+            mask, if it was used in the fitting, by default None
+        """
         self.data = data 
         self.rms = rms 
         self.psf = psf 
@@ -40,7 +60,6 @@ class PySersicResults():
 
 
     def __repr__(self)->str:
-
         out = 'results object for pysersic fit\n'
         out+= f"\t contains SVI results {hasattr(self,'svi_results')}\n"
         out+= f"\t contains sampling results: {hasattr(self,'sampling_results')}\n"
@@ -50,6 +69,13 @@ class PySersicResults():
 
 
     def add_prior(self,prior):
+        """add the prior object to the result object once created
+
+        Parameters
+        ----------
+        prior : pysersic.priors.BasePrior
+            created prior object
+        """
         self.prior = prior 
     def injest_data(self, 
                 sampler: Optional[numpyro.infer.mcmc.MCMC] =  None, 
@@ -57,7 +83,10 @@ class PySersicResults():
                 purge_extra: Optional[bool] = True,
                 rkey: Optional[jax.random.PRNGKey] = random.PRNGKey(5)
         ) -> pandas.DataFrame:
-        """Method to injest data from optimized SVI model or results of sampling. Sets the class attribute 'idata' with an Arviz InferenceData object.
+        """Method to injest data from optimized SVI model or results of sampling. 
+        When sampling data is input, sets the class attribute `sampling_results`, while for an SVI run, saves `svi_results.`
+        A PysersicResults object can have at most data for one SVI and one sampling run. Both class atttributes are 
+        instances of arviz.InferenceData objects.
 
         Parameters
         ----------
@@ -86,7 +115,7 @@ class PySersicResults():
 
         elif sampler is not None:
             self.sampling_results = az.from_numpyro(sampler)
-            self.sampling_results = self.parse_injested_data(self.sampling_results,purge_extra=purge_extra)
+            self.sampling_results = self._parse_injested_data(self.sampling_results,purge_extra=purge_extra)
         else:
             assert 'guide' in svi_res_dict.keys()
             assert 'model' in svi_res_dict.keys()
@@ -98,12 +127,26 @@ class PySersicResults():
             for key in post_raw:
                 post_dict[key] = post_raw[key][jnp.newaxis,]
             self.svi_results = az.from_dict(post_dict)
-            self.svi_results = self.parse_injested_data(self.svi_results,purge_extra=purge_extra)
+            self.svi_results = self._parse_injested_data(self.svi_results,purge_extra=purge_extra)
 
 
         return
 
-    def parse_injested_data(self,data,purge_extra:bool=True):
+    def _parse_injested_data(self,data:az.InferenceData,purge_extra:bool=True)->az.InferenceData:
+        """Helper function to postprocess the poterior object (internal use).
+
+        Parameters
+        ----------
+        data : arviz.InferenceData
+            _description_
+        purge_extra : bool, optional
+            whether to purge extra params not part of the fitting, by default True
+
+        Returns
+        -------
+        arviz.InferenceData
+            the cleaned up object
+        """
         var_names = list(data.posterior.to_dataframe().columns)
         
         for var in var_names:
@@ -121,15 +164,41 @@ class PySersicResults():
         return data
 
 
-    def svi_summary(self):
+    def svi_summary(self)->pd.DataFrame:
+        """Convenience function for returning the summary dataframe using the arviz summary.
+
+        Returns
+        -------
+        pandas.DataFrame
+            data frame containing the arviz summary of the fit.
+        """
         assert hasattr(self,'svi_results') 
         return az.summary(self.svi_results)
     
-    def sampling_summary(self):
+    def sampling_summary(self)->pd.DataFrame:
+        """Convenience function for returning the summary dataframe using the arviz summary.
+
+        Returns
+        -------
+        pandas.DataFrame
+            data frame containing the arviz summary of the fit.
+        """
         assert hasattr(self,'sampling_results')
         return az.summary(self.sampling_results)
 
-    def render_best_fit_model(self,which='SVI'):
+    def render_best_fit_model(self,which:str='SVI')->ArrayLike:
+        """Create a model image using the median posterior values of the parameters.
+
+        Parameters
+        ----------
+        which : str, optional
+            whether to use the sampling or SVI results to generate th model, by default 'SVI'
+
+        Returns
+        -------
+        ArrayLike
+            model image
+        """
         assert which in ['svi','SVI','sampler']
         if which.upper()=='SVI':
             medians = self.svi_results.posterior.median()
@@ -142,17 +211,50 @@ class PySersicResults():
         return mod
     
 
-    def corner(self,which='SVI',**kwargs):
+    def corner(self,which:str='SVI',quantiles=[.16,.50,.84,],**kwargs):
+        """Return a corner plot of the parameter estimation
+
+        Parameters
+        ----------
+        which : str, optional
+            which results to use. Options are 'sampler','SVI', or 'both', in which case contours will be overplotted, by default 'SVI'
+        quantiles: ListLike, optional  
+            which quantiles to mark on the corner plot, can pass None, by default [0.16,0.5,0.84]
+        **kwargs:
+            any additional arguments to pass to corner (for the single plot case).
+        Returns
+        -------
+        matplotlib.figure
+            fig object containing the corner plots
+        """
         if which =='SVI':
-            return corner.corner(self.svi_results,show_titles=True,quantiles=[.16,.50,.84,],**kwargs)
+            return corner.corner(self.svi_results,show_titles=True,quantiles=quantiles,**kwargs)
         elif which =='sampler':
-            return corner.corner(self.sampling_results,show_titles=True,quantiles=[.16,.50,.84,],**kwargs)
+            return corner.corner(self.sampling_results,show_titles=True,quantiles=quantiles,**kwargs)
         elif which=='both':
-            fig = corner.corner(self.sampling_results, alpha = 0.5, color = 'C0',show_titles=True,quantiles=[.16,.50,.84,])
+            fig = corner.corner(self.sampling_results, alpha = 0.5, color = 'C0',show_titles=True,quantiles=quantiles)
             corner.corner(self.svi_results,alpha = 0.5, color = 'C1', fig = fig,show_titles=True,)
             return fig 
         
-    def retrieve_param_quantiles(self,which='SVI',quantiles=[0.16,0.5,0.84],return_type='dict'):
+    def retrieve_param_quantiles(self,which:str='SVI',
+                                quantiles:ListLike=[0.16,0.5,0.84],
+                                return_dataframe:bool=False)->Union[pd.DataFrame,dict]:
+        """retrieve quantiles on the parameter estimation
+
+        Parameters
+        ----------
+        which : str, optional
+            which results to pull from, by default 'SVI'
+        quantiles : ListLike, optional
+            array of quantiles to pull, must be between 0 and 1, by default [0.16,0.5,0.84]
+        return_dataframe : bool, optional
+            whether to return dataframe instead of simple dict, by default False
+
+        Returns
+        -------
+        Union[pd.DataFrame,dict]
+            dict or dataframe with index/keys as parameters and columns/values as the chosen quantiles.
+        """
         if which == 'SVI':
             r = self.svi_results 
         else:
@@ -162,7 +264,7 @@ class PySersicResults():
         out = {} 
         for i in xx['data_vars'].keys():
             out[i] = xx['data_vars'][i]['data']
-        if return_type=='dict':
+        if return_dataframe==False:
             return out
         else:
             df = pd.DataFrame.from_dict(out).T
@@ -170,7 +272,22 @@ class PySersicResults():
             return df 
 
 
-    def latex_table(self,which='SVI',quantiles=[0.16,0.5,0.84]):
+    def latex_table(self,which:str='SVI',quantiles:ListLike=[0.16,0.5,0.84]):
+        """
+        Generate a simple AASTex deluxetable with the fit parameters. Prints the result.
+
+        Parameters
+        ----------
+        which : str, optional
+            which results to pull from, by default 'SVI'
+        quantiles : ListLike, optional
+            quantiles to use must be len 3 as we do upper-median and median-lower to get +/- values, by default [0.16,0.5,0.84]
+
+        Raises
+        ------
+        AssertionError
+            if the quantile list does not have three values 
+        """
         out = "\\begin{deluxetable}{lr}[b]\n"
         out+= "\\tablehead{\n"
         out+= "\colhead{Parameter} & \colhead{\hspace{4.5cm}Value\hspace{.5cm}}}\n"
@@ -196,18 +313,57 @@ class PySersicResults():
         out+="\end{deluxetable}"
         print(out)
 
-    def get_chains(self,which='SVI'):
+    def get_chains(self,which:str='SVI')->xarray.Dataset:
+        """
+        Wrapper for az.extract, producing the chains/draws for the run
+
+        Parameters
+        ----------
+        which : str, optional
+            which results to draw from, by default 'SVI'
+
+        Returns
+        -------
+        xarray.Dataset
+            chain object
+        """
         if which=='SVI':
             return az.extract(self.svi_results)
         elif which=='sampler':
             return az.extract(self.sampling_results)
     
-    def compute_statistic(self,parameter:str,func:Callable,which='SVI'):
+    def compute_statistic(self,parameter:str,func:Callable,which:str='SVI')->ArrayLike:
+        """
+        Compute an arbitrary array statistic on the chain for a given parameter.
+        For example, the std of all ellipticity draws. or the mean of the sersic draws
+
+        Parameters
+        ----------
+        parameter : str
+            a legal parameter from the fit. Use e.g. `results.svi_summary()` to see them.
+        func : Callable
+            any function which reads in array-like data and computes something
+        which : str, optional
+            which results to pull from, by default 'SVI'
+
+        Returns
+        -------
+        ArrayLike
+            the computed statistic(s)
+        """
         chain = self.get_chains(which=which)
         return func(chain[parameter]).data
     
     
-    def save_result(self,fname):
+    def save_result(self,fname:str):
+        """Save summary of the fit, copies of the data, the chains, and some other info about priors and renderers
+        into an asdf file for later retrieval. 
+
+        Parameters
+        ----------
+        fname : str
+            filename to save to.
+        """
         tree = {} 
         tree['input_data'] = {} 
         tree['input_data']['image'] = np.array(self.data)
