@@ -176,7 +176,32 @@ class BaseFitter(ABC):
         self.svi_results.add_prior(self.prior)
         return self.svi_results
 
-    def best_fit(self,
+    
+    def get_MAP(self,rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3),):
+        pass 
+    
+    def estimate_posterior(self,
+                           method:str='laplace',
+                           rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3),
+                           ) -> pandas.DataFrame:
+        """Estimate the posterior using one of several methods.
+        Options include:
+        - 'laplace'
+        - 'flow'
+
+        Parameters
+        ----------
+        method : str, optional
+            method to use, by default 'laplace'
+        """
+        if method=='laplace':
+            return self._laplace_fit(rkey=rkey)
+        elif method=='flow':
+            return self._train_flow(rkey=rkey)
+    
+    
+    
+    def _laplace_fit(self,
             rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3),
             )-> pandas.DataFrame:
         """
@@ -199,7 +224,7 @@ class BaseFitter(ABC):
 
         return summary
     
-    def train_flow(self,
+    def _train_flow(self,
             rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3),
         )-> pandas.DataFrame:
         """
