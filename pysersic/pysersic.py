@@ -21,7 +21,7 @@ from pysersic.rendering import (
 )
 from pysersic.priors import PySersicSourcePrior, PySersicMultiPrior
 from pysersic.utils import gaussian_loss, train_numpyro_svi_early_stop 
-from pysersic.utils.results import PySersicResults
+from pysersic.results import PySersicResults
 
 ArrayLike = Union[np.array, jax.numpy.array]
 
