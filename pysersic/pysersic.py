@@ -12,6 +12,7 @@ from jax import random
 from numpyro import infer
 from numpyro.infer import SVI, Trace_ELBO, TraceMeanField_ELBO
 from numpyro.optim import Adam, optax_to_numpyro
+from numpyro.infer.util import Predictive
 from optax import adamw
 
 from pysersic.rendering import (
@@ -22,7 +23,7 @@ from pysersic.rendering import (
 from pysersic.priors import PySersicSourcePrior, PySersicMultiPrior
 from pysersic.utils import gaussian_loss, train_numpyro_svi_early_stop 
 from pysersic.results import PySersicResults
-
+from numpyro.handlers import trace,condition
 ArrayLike = Union[np.array, jax.numpy.array]
 
 class BaseFitter(ABC):
@@ -172,11 +173,69 @@ class BaseFitter(ABC):
 
         svi_res_dict =  dict(guide = guide, model = model_cur, svi_result = self.svi_result)
         self.svi_results = PySersicResults(data=self.data,rms=self.rms,psf=self.psf,mask=self.mask,loss_func=self.loss_func,renderer=self.renderer)
-        self.svi_results.injest_data(svi_res_dict=svi_res_dict)
+        self.svi_results.injest_data(svi_res_dict=svi_res_dict,purge_extra=True)
         self.svi_results.add_prior(self.prior)
         return self.svi_results
 
-    def best_fit(self,
+
+    
+    def find_MAP(self,
+                rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3),):
+        """Eschew posterior estimation and simply return a dictionary with MAP (maximum a posteriori) values for the parameters.
+
+        Parameters
+        ----------
+        rkey : Optional[jax.random.PRNGKey], optional
+            rng key, by default jax.random.PRNGKey(3)
+
+        Returns
+        -------
+        dict
+            dictionary with fit parameters and their values.
+        """
+        model_cur = self.build_model()
+        autoguide_map = infer.autoguide.AutoDelta(model_cur)
+        train_kwargs = dict(lr_init = 0.1, num_round = 4,frac_lr_decrease  = 0.25, patience = 100, optimizer = Adam)
+        svi_kernel = SVI(model_cur,autoguide_map, Adam(0.1),loss=Trace_ELBO())
+        
+        res = train_numpyro_svi_early_stop(svi_kernel,rkey=rkey, **train_kwargs)
+        #map_estimate = autoguide_map() 
+        use_dict = {}
+        for key in res.params.keys():
+            pref = key.split('_auto_loc')[0]
+            use_dict[pref] = res.params[key]
+        trace_out = trace(condition(model_cur, use_dict)).get_trace()
+        real_out = {}
+        for key in self.prior.param_names:
+            real_out[key] = trace_out[key]['value']
+        return real_out
+    
+    def estimate_posterior(self,
+                        method:str='laplace',
+                        rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3),
+                        **kwargs) -> pandas.DataFrame:
+        """Estimate the posterior using one of several methods.
+        Options include:
+        - 'laplace'
+        - 'svi-flow'
+
+
+        Parameters
+        ----------
+        method : str, optional
+            method to use, by default 'laplace'
+        """
+        assert method in ['laplace','svi-flow']
+        if method=='laplace':
+            return self._laplace_fit(rkey=rkey,**kwargs)
+        elif method=='svi-flow':
+            return self._train_flow(rkey=rkey)
+
+
+    
+    
+    
+    def _laplace_fit(self,
             rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3),
             )-> pandas.DataFrame:
         """
@@ -199,7 +258,7 @@ class BaseFitter(ABC):
 
         return summary
     
-    def train_flow(self,
+    def _train_flow(self,
             rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3),
         )-> pandas.DataFrame:
         """
