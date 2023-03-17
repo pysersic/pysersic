@@ -328,8 +328,8 @@ class PySersicResults():
         tree['input_data']['mask'] = np.array(self.mask)
         tree['loss_func'] = str(self.loss_func)
         tree['renderer'] = str(self.renderer)
-        tree['contains_SVI_result'] =  f"{hasattr(self,'svi_results')}"
-        tree['contains_sampling_result'] =  f"{hasattr(self,'sampling_results')}"
+        tree['contains_SVI_result'] =  self.runtype == 'svi'
+        tree['contains_sampling_result'] =  self.runtype=='sampling'
         tree['prior_info'] = self.prior.__str__()
         tree['best__model'] = np.array(self.render_best_fit_model())
         tree['posterior'] = self.idata.to_dict()['posterior']
