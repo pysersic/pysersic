@@ -60,10 +60,10 @@ class PySersicResults():
 
 
     def __repr__(self)->str:
-        out = 'results object for pysersic fit\n'
-        out+= f"\t contains SVI results {hasattr(self,'svi_results')}\n"
-        out+= f"\t contains sampling results: {hasattr(self,'sampling_results')}\n"
-        return out 
+        if not hasattr(self,'runtype'):
+            self.runtype='unknown'
+        out = f'PySersicResults object for pysersic fit of type: {self.runtype}\n'
+        return out
 
 
 
