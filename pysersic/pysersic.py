@@ -177,7 +177,7 @@ class BaseFitter(ABC):
         return self.svi_results
 
     
-    def get_MAP(self,rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3),):
+    def find_MAP(self,rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3),):
         pass 
     
     def estimate_posterior(self,
