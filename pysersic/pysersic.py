@@ -178,7 +178,10 @@ class BaseFitter(ABC):
 
     
     def find_MAP(self,rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3),):
-        pass 
+        train_kwargs = dict(lr_init = 0.1, num_round = 4,frac_lr_decrease  = 0.25, patience = 100, optimizer = Adam)
+        svi_kwargs = dict(loss = Trace_ELBO(1))
+        summary = self._train_SVI(infer.autoguide.AutoDelta, SVI_kwargs=svi_kwargs, train_kwargs=train_kwargs, rkey=rkey)
+        return summary 
     
     def estimate_posterior(self,
                            method:str='laplace',
