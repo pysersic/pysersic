@@ -211,7 +211,7 @@ class BaseFitter(ABC):
         return real_out
     
     def estimate_posterior(self,
-                        method:str,
+                        method:str='laplace',
                         rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3),
                         **kwargs) -> pandas.DataFrame:
         """Estimate the posterior using one of several methods.
@@ -222,8 +222,8 @@ class BaseFitter(ABC):
 
         Parameters
         ----------
-        method : str
-            method to use
+        method : str, optional
+            method to use, by default 'laplace'
         """
         assert method in ['laplace','svi-flow']
         if method=='laplace':
