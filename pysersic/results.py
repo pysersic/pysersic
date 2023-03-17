@@ -226,7 +226,7 @@ class PySersicResults():
             dict or dataframe with index/keys as parameters and columns/values as the chosen quantiles.
         """
         r = self.idata
-        xx = r.quantile(quantiles).posterior.to_dict()
+        xx = r.posterior.quantile(quantiles).to_dict()
         out = {} 
         for i in xx['data_vars'].keys():
             out[i] = xx['data_vars'][i]['data']
