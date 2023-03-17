@@ -161,7 +161,7 @@ class PySersicResults():
                 if ('base' in var) or ('auto' in var) or ('unwrapped' in var):
                     to_drop.append(var)
 
-        data.posterior = data.posterior.drop_vars(to_drop)
+            data.posterior = data.posterior.drop_vars(to_drop)
         return data
 
 
