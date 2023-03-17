@@ -114,8 +114,8 @@ class PySersicResults():
             raise AssertionError("Must svi results dictionary or sampled sampler")
 
         elif sampler is not None:
-            self.results = az.from_numpyro(sampler)
-            self.results = self._parse_injested_data(self.results,purge_extra=purge_extra)
+            self.idata = az.from_numpyro(sampler)
+            self.idata = self._parse_injested_data(self.idata,purge_extra=purge_extra)
             self.runtype = 'sampling'
         else:
             assert 'guide' in svi_res_dict.keys()
@@ -127,8 +127,8 @@ class PySersicResults():
             post_dict = {}
             for key in post_raw:
                 post_dict[key] = post_raw[key][jnp.newaxis,]
-            self.results = az.from_dict(post_dict)
-            self.results = self._parse_injested_data(self.results,purge_extra=purge_extra)
+            self.idata = az.from_dict(post_dict)
+            self.idata = self._parse_injested_data(self.idata,purge_extra=purge_extra)
             self.runtype='svi'
 
         return
@@ -173,7 +173,7 @@ class PySersicResults():
         pandas.DataFrame
             data frame containing the arviz summary of the fit.
         """
-        return az.summary(self.results)
+        return az.summary(self.idata)
     
 
     def render_best_fit_model(self,)->ArrayLike:
@@ -184,7 +184,7 @@ class PySersicResults():
         ArrayLike
             model image
         """
-        medians = self.results.posterior.median() 
+        medians = self.idata.posterior.median() 
         median_params = jnp.array([medians[name].data for name in self.prior.param_names])
         mod = self.renderer.render_source(median_params, self.prior.profile_type)
         return mod
@@ -205,7 +205,7 @@ class PySersicResults():
             fig object containing the corner plots
         """
 
-        return corner.corner(self.results,show_titles=True,quantiles=quantiles,**kwargs)
+        return corner.corner(self.idata,show_titles=True,quantiles=quantiles,**kwargs)
 
         
     def retrieve_param_quantiles(self,
@@ -225,7 +225,7 @@ class PySersicResults():
         Union[pd.DataFrame,dict]
             dict or dataframe with index/keys as parameters and columns/values as the chosen quantiles.
         """
-        r = self.results
+        r = self.idata
         xx = r.quantile(quantiles).posterior.to_dict()
         out = {} 
         for i in xx['data_vars'].keys():
@@ -287,7 +287,7 @@ class PySersicResults():
             chain object
         """
 
-        return az.extract(self.results)
+        return az.extract(self.idata)
 
     
     def compute_statistic(self,parameter:str,func:Callable,)->ArrayLike:
@@ -332,7 +332,7 @@ class PySersicResults():
         tree['contains_sampling_result'] =  f"{hasattr(self,'sampling_results')}"
         tree['prior_info'] = self.prior.__str__()
         tree['best__model'] = np.array(self.render_best_fit_model())
-        tree['posterior'] = self.results.to_dict()['posterior']
+        tree['posterior'] = self.idata.to_dict()['posterior']
         for i in tree['posterior']:
             i = np.array(i)
         af = asdf.AsdfFile(tree=tree)
