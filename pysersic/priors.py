@@ -448,8 +448,9 @@ class PySersicMultiPrior(BasePrior):
         return all_params
 
 def autoprior(image: jax.numpy.array,
-        profile_type: str,
-        sky_type: Optional[str] = 'none')-> PySersicSourcePrior:
+            profile_type: str,
+            mask: Optional[jax.numpy.array] = None,
+            sky_type: Optional[str] = 'none')-> PySersicSourcePrior:
     """Function to generate default priors based on a given image and profile type
 
     Parameters
@@ -465,6 +466,8 @@ def autoprior(image: jax.numpy.array,
     dict
         Dictionary containing numpyro Distribution objects for each parameter
     """
+    if mask is not None: 
+        image = image * np.logical_not(mask)
     if profile_type == 'sersic':
         prior_dict = generate_sersic_prior(image, sky_type = sky_type)
     
