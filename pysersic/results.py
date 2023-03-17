@@ -65,7 +65,8 @@ class PySersicResults():
         out = f'PySersicResults object for pysersic fit of type: {self.runtype}\n'
         return out
 
-
+    def add_method_used(self,method):
+        self.svi_method_used = method 
 
 
     def add_prior(self,prior):
@@ -330,6 +331,8 @@ class PySersicResults():
         tree['renderer'] = str(self.renderer)
         tree['contains_SVI_result'] =  self.runtype == 'svi'
         tree['contains_sampling_result'] =  self.runtype=='sampling'
+        if self.runtype == 'svi':
+            tree['svi_method_used'] = self.svi_method_used
         tree['prior_info'] = self.prior.__str__()
         tree['best__model'] = np.array(self.render_best_fit_model())
         tree['posterior'] = self.idata.to_dict()['posterior']

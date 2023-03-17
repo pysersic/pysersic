@@ -142,6 +142,7 @@ class BaseFitter(ABC):
 
     def _train_SVI(self,
             autoguide: numpyro.infer.autoguide.AutoContinuous,
+            method:str,
             SVI_kwargs: Optional[dict]= {},
             train_kwargs: Optional[dict] = {},
             rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(6),
@@ -153,6 +154,8 @@ class BaseFitter(ABC):
         ----------
         autoguide : numpyro.infer.autoguide.AutoContinuous
             Function to build guide
+        method: str
+            name of method being used; for saving results
         SVI_kwargs : Optional[dict], optional
             Additional arguments to pass to numpyro.infer.SVI, by default {}
         train_kwargs : Optional[dict], optional
@@ -175,6 +178,7 @@ class BaseFitter(ABC):
         self.svi_results = PySersicResults(data=self.data,rms=self.rms,psf=self.psf,mask=self.mask,loss_func=self.loss_func,renderer=self.renderer)
         self.svi_results.injest_data(svi_res_dict=svi_res_dict,purge_extra=True)
         self.svi_results.add_prior(self.prior)
+        self.svi_results.add_method_used(method)
         return self.svi_results
 
 
@@ -254,7 +258,7 @@ class BaseFitter(ABC):
 
         train_kwargs = dict(lr_init = 0.1, num_round = 4,frac_lr_decrease  = 0.25, patience = 100, optimizer = Adam)
         svi_kwargs = dict(loss = Trace_ELBO(1))
-        summary = self._train_SVI(infer.autoguide.AutoLaplaceApproximation, SVI_kwargs=svi_kwargs, train_kwargs=train_kwargs, rkey=rkey)
+        summary = self._train_SVI(infer.autoguide.AutoLaplaceApproximation, method='laplace',SVI_kwargs=svi_kwargs, train_kwargs=train_kwargs, rkey=rkey)
 
         return summary
     
@@ -281,7 +285,7 @@ class BaseFitter(ABC):
         svi_kwargs = dict(loss = TraceMeanField_ELBO(16))
         guide_func = partial(infer.autoguide.AutoBNAFNormal, num_flows = 1)
 
-        summary = self._train_SVI(guide_func, SVI_kwargs=svi_kwargs, train_kwargs=train_kwargs, rkey=rkey)
+        summary = self._train_SVI(guide_func,method='svi-flow', SVI_kwargs=svi_kwargs, train_kwargs=train_kwargs, rkey=rkey)
 
         return summary
 
