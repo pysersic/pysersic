@@ -535,7 +535,7 @@ def generate_sersic_prior(image: jax.numpy.array,
 
     prior.set_uniform_prior('ellip', 0,0.9)
     theta_guess = cat.orientation.to(u.rad).value
-    prior.set_custom_prior('theta', dist.VonMises(loc = theta_guess,concentration=0), reparam= infer.reparam.CircularReparam() )
+    prior.set_custom_prior('theta', dist.VonMises(loc = theta_guess,concentration=2), reparam= infer.reparam.CircularReparam() )
     prior.set_truncated_gaussian_prior('n',2,1, low = 0.5,high = 8)
 
     if position_guess is None:
@@ -601,7 +601,7 @@ def generate_exp_dev_prior(image: jax.numpy.array,
 
     prior.set_uniform_prior('ellip', 0,0.9)
     theta_guess = cat.orientation.to(u.rad).value
-    prior.set_custom_prior('theta', dist.VonMises(loc = theta_guess,concentration=0), reparam= infer.reparam.CircularReparam() )
+    prior.set_custom_prior('theta', dist.VonMises(loc = theta_guess,concentration=2), reparam= infer.reparam.CircularReparam() )
     prior.set_truncated_gaussian_prior('n',2,1, low = 0.5,high = 8)
 
     if position_guess is None:
@@ -658,7 +658,7 @@ def generate_doublesersic_prior(image: jax.numpy.array,
     prior.set_gaussian_prior('flux',flux_guess,2*jnp.sqrt(flux_guess))
     prior.set_uniform_prior('f_1', 0.,1.)
     theta_guess = cat.orientation.to(u.rad).value
-    prior.set_custom_prior('theta', dist.VonMises(loc = theta_guess,concentration=0), reparam= infer.reparam.CircularReparam() )
+    prior.set_custom_prior('theta', dist.VonMises(loc = theta_guess,concentration=2), reparam= infer.reparam.CircularReparam() )
 
     if r_eff_guess is None:
         r_eff_guess = (cat.semimajor_sigma/2.).value
