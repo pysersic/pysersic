@@ -136,7 +136,7 @@ class BaseFitter(ABC):
         self.sampling_results = PySersicResults(data=self.data,rms=self.rms,psf=self.psf,mask=self.mask,loss_func=self.loss_func,renderer=self.renderer)
         self.sampling_results.add_prior(self.prior)
         self.sampling_results.injest_data(sampler = self.sampler)
-        return self.svi_results 
+        return self.sampling_results 
         
 
 
