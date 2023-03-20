@@ -182,7 +182,7 @@ class PySersicSourcePrior(BasePrior):
         assert profile_type in base_profile_types
         self.profile_type = profile_type
         self.param_names = base_profile_params[self.profile_type]
-        self.repr_list = []
+        self.repr_dict = {}
         self.built = False
         self.suffix = suffix
 
@@ -190,7 +190,7 @@ class PySersicSourcePrior(BasePrior):
         out = f"Prior for a {self.profile_type} source:"
         num_dash = len(out)
         out += "\n" + "-"*num_dash + "\n"
-        for (var, descrip) in self.repr_list:
+        for (var, descrip) in self.repr_dict.items():
             out += var + " ---  " + descrip + "\n"    
         return out
     
@@ -249,7 +249,7 @@ class PySersicSourcePrior(BasePrior):
         
         self._set_dist(var_name + self.suffix, prior_dist)
         self.reparam_dict[var_name  + self.suffix] = infer.reparam.TransformReparam()
-        self.repr_list.append([var_name, f"Normal w/ mu = {loc:.2f}, sigma = {scale:.2f}"])
+        self.repr_dict[var_name] = f"Normal w/ mu = {loc:.2f}, sigma = {scale:.2f}"
         return self
     
     def set_uniform_prior(self, var_name:str, low: float,high: float)-> "PySersicSourcePrior":
@@ -278,7 +278,7 @@ class PySersicSourcePrior(BasePrior):
             dist.transforms.AffineTransform(shift,scale),)
         self._set_dist(var_name + self.suffix, prior_dist)
         self.reparam_dict[var_name + self.suffix] = infer.reparam.TransformReparam()
-        self.repr_list.append([var_name, f"Uniform between: {low:.2f} -> {high:.2f}"])
+        self.repr_dict[var_name] = f"Uniform between: {low:.2f} -> {high:.2f}"
         return self
     
     def set_truncated_gaussian_prior(self,
@@ -325,7 +325,7 @@ class PySersicSourcePrior(BasePrior):
     
         self._set_dist(var_name + self.suffix, prior_dist)
         self.reparam_dict[var_name + self.suffix] = infer.reparam.TransformReparam()
-        self.repr_list.append([var_name, f"Truncated Normal w/ mu = {loc:.2f}, sigma = {scale:.2f}, between: {low:.2f} -> {high:.2f}"])
+        self.repr_dict[var_name] = f"Truncated Normal w/ mu = {loc:.2f}, sigma = {scale:.2f}, between: {low:.2f} -> {high:.2f}"
         return self
 
     def set_custom_prior(self, 
@@ -351,7 +351,7 @@ class PySersicSourcePrior(BasePrior):
         self._set_dist(var_name + self.suffix, prior_dist)
         if reparam is not None:
             self.reparam_dict[var_name + self.suffix] = reparam
-        self.repr_list.append([var_name, "Custom prior of type: "+ str(prior_dist.__class__)])
+        self.repr_dict[var_name] = "Custom prior of type: "+ str(prior_dist.__class__)
         return self
     
     def check_vars(self, verbose = False) -> bool:
@@ -374,7 +374,7 @@ class PySersicSourcePrior(BasePrior):
                 missing.append(var)
         
         extra = []
-        for (name, descrip) in self.repr_list:
+        for (name, descrip) in self.repr_dict.items():
             if (name not in self.param_names) and ('sky' not in name):
                 extra.append(name)
         if verbose:
