@@ -105,7 +105,8 @@ class BaseFitter(ABC):
 
 
     def sample(self,
-                sampler_kwargs: Optional[dict] ={},
+                sampler_kwargs: Optional[dict] =
+                dict(init_strategy = infer.init_to_sample),
                 mcmc_kwargs: Optional[dict] = 
                 dict(num_warmup=1000,
                 num_samples=1000,
@@ -198,8 +199,8 @@ class BaseFitter(ABC):
             dictionary with fit parameters and their values.
         """
         model_cur = self.build_model()
-        autoguide_map = infer.autoguide.AutoDelta(model_cur)
-        train_kwargs = dict(lr_init = 0.01, num_round = 4,frac_lr_decrease  = 0.25, patience = 100, optimizer = Adam)
+        autoguide_map = infer.autoguide.AutoDelta(model_cur, init_loc_fn= infer.init_to_median)
+        train_kwargs = dict(lr_init = 0.01, num_round = 3,frac_lr_decrease  = 0.1, patience = 250, optimizer = Adam)
         svi_kernel = SVI(model_cur,autoguide_map, Adam(0.01),loss=Trace_ELBO())
         
         res = train_numpyro_svi_early_stop(svi_kernel,rkey=rkey, **train_kwargs)
@@ -211,7 +212,11 @@ class BaseFitter(ABC):
         trace_out = trace(condition(model_cur, use_dict)).get_trace()
         real_out = {}
         for key in self.prior.param_names:
-            real_out[key] = trace_out[key]['value']
+            real_out[key] = np.round( float( trace_out[key]['value'] ), 3)
+        for key in trace_out:
+            if ('sky' in key) and not ('base' in key):
+                real_out[key] = np.round(float( trace_out[key]['value'] ) ,3)
+
         return real_out
     
     def estimate_posterior(self,
@@ -231,9 +236,9 @@ class BaseFitter(ABC):
         """
         assert method in ['laplace','svi-flow']
         if method=='laplace':
-            train_kwargs = dict(lr_init = 1e-2, num_round = 3,frac_lr_decrease  = 0.1, patience = 100, optimizer = Adam)
+            train_kwargs = dict(lr_init = 1e-2, num_round = 3,frac_lr_decrease  = 0.1, patience = 250, optimizer = Adam)
             svi_kwargs = dict(loss = Trace_ELBO(1))
-            guide_func = infer.autoguide.AutoLaplaceApproximation
+            guide_func = partial(infer.autoguide.AutoLaplaceApproximation, init_loc_fn = infer.init_to_median )
 
         elif method=='svi-flow':
             train_kwargs = dict(lr_init = 1e-2, num_round = 3,frac_lr_decrease  = 0.1, patience = 100, optimizer = Adam)
