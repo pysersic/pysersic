@@ -48,8 +48,8 @@ def sample_sky(
 def train_numpyro_svi_early_stop(
         svi_class: SVI,
         num_round: Optional[int] = 3,
-        max_train: Optional[int] = 3000,
-        lr_init: Optional[float] = 0.1,
+        max_train: Optional[int] = 5000,
+        lr_init: Optional[float] = 0.01,
         frac_lr_decrease: Optional[float]  = 0.1,
         patience: Optional[int] = 100,
         optimizer: Optional[optim._NumPyroOptim] = optim.Adam,

@@ -199,8 +199,8 @@ class BaseFitter(ABC):
         """
         model_cur = self.build_model()
         autoguide_map = infer.autoguide.AutoDelta(model_cur)
-        train_kwargs = dict(lr_init = 0.1, num_round = 4,frac_lr_decrease  = 0.25, patience = 100, optimizer = Adam)
-        svi_kernel = SVI(model_cur,autoguide_map, Adam(0.1),loss=Trace_ELBO())
+        train_kwargs = dict(lr_init = 0.01, num_round = 4,frac_lr_decrease  = 0.25, patience = 100, optimizer = Adam)
+        svi_kernel = SVI(model_cur,autoguide_map, Adam(0.01),loss=Trace_ELBO())
         
         res = train_numpyro_svi_early_stop(svi_kernel,rkey=rkey, **train_kwargs)
         #map_estimate = autoguide_map() 
@@ -231,63 +231,17 @@ class BaseFitter(ABC):
         """
         assert method in ['laplace','svi-flow']
         if method=='laplace':
-            return self._laplace_fit(rkey=rkey,**kwargs)
+            train_kwargs = dict(lr_init = 1e-2, num_round = 3,frac_lr_decrease  = 0.1, patience = 100, optimizer = Adam)
+            svi_kwargs = dict(loss = Trace_ELBO(1))
+            guide_func = infer.autoguide.AutoLaplaceApproximation
+
         elif method=='svi-flow':
-            return self._train_flow(rkey=rkey)
+            train_kwargs = dict(lr_init = 1e-2, num_round = 3,frac_lr_decrease  = 0.1, patience = 100, optimizer = Adam)
+            svi_kwargs = dict(loss = infer.TraceMeanField_ELBO(16))
+            guide_func = partial(infer.autoguide.AutoBNAFNormal, num_flows = 1)
 
-
-    
-    
-    
-    def _laplace_fit(self,
-            rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3),
-            )-> pandas.DataFrame:
-        """
-        Perform inference by finding the Maximum a-posteriori (MAP) with uncertainties calculated using the Laplace Approximation. This is a good starting place to find a 'best fit' along with reasonable uncertainties.
-
-        Parameters
-        ----------
-        rkey : Optional[jax.random.PRNGKey], optional
-            PRNG key, by default jax.random.PRNGKey(3)
-
-        Returns
-        -------
-        pandas.DataFrame
-            ArviZ summary of posterior
-        """
-
-        train_kwargs = dict(lr_init = 0.1, num_round = 4,frac_lr_decrease  = 0.25, patience = 100, optimizer = Adam)
-        svi_kwargs = dict(loss = Trace_ELBO(1))
-        summary = self._train_SVI(infer.autoguide.AutoLaplaceApproximation, method='laplace',SVI_kwargs=svi_kwargs, train_kwargs=train_kwargs, rkey=rkey)
-
-        return summary
-    
-    def _train_flow(self,
-            rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3),
-        )-> pandas.DataFrame:
-        """
-        Perform inference using variational inference by fitting a Block Neural Autoregressive Flow (BNAF,https://arxiv.org/abs/1904.04676) to the posterior distribution. Usually faster than MCMC sampling but not guarenteed to converge accurately
-
-        Parameters
-        ----------
-        rkey : Optional[jax.random.PRNGKey], optional
-            PRNG key, by default jax.random.PRNGKey(3)
-
-        Returns
-        -------
-        pandas.DataFrame
-            ArviZ summary of posterior
-        """
-        def opt_func(lr):
-            return optax_to_numpyro(adamw(lr, weight_decay=0.001))
-
-        train_kwargs = dict(lr_init = 4e-3, num_round = 4,frac_lr_decrease  = 0.25, patience = 100, optimizer = opt_func)
-        svi_kwargs = dict(loss = TraceMeanField_ELBO(16))
-        guide_func = partial(infer.autoguide.AutoBNAFNormal, num_flows = 1)
-
-        summary = self._train_SVI(guide_func,method='svi-flow', SVI_kwargs=svi_kwargs, train_kwargs=train_kwargs, rkey=rkey)
-
-        return summary
+        results = self._train_SVI(guide_func,method=method, SVI_kwargs=svi_kwargs, train_kwargs=train_kwargs, rkey=rkey)
+        return results.summary()
 
     @abstractmethod
     def build_model(self,):
