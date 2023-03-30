@@ -188,7 +188,7 @@ class BaseFitter(ABC):
 
         svi_kernel = SVI(model_cur,guide, Adam(0.1), loss = ELBO_loss, **SVI_kwargs)
         self.svi_result = train_numpyro_svi_early_stop(svi_kernel,rkey=rkey,lr_init=lr_init,
-                                                        num_round=num_round **train_kwargs)
+                                                        num_round=num_round, **train_kwargs)
 
         svi_res_dict =  dict(guide = guide, model = model_cur, svi_result = self.svi_result)
         self.svi_results = PySersicResults(data=self.data,rms=self.rms,psf=self.psf,mask=self.mask,loss_func=self.loss_func,renderer=self.renderer)
@@ -227,10 +227,10 @@ class BaseFitter(ABC):
         trace_out = trace(condition(model_cur, use_dict)).get_trace()
         real_out = {}
         for key in self.prior.param_names:
-            real_out[key] = np.round( float( trace_out[key]['value'] ), 3)
+            real_out[key] = float('{:.5e}'.format(trace_out[key]['value']) )
         for key in trace_out:
             if ('sky' in key) and not ('base' in key):
-                real_out[key] = np.round(float( trace_out[key]['value'] ) ,3)
+                real_out[key] = float('{:.5e}'.format(trace_out[key]['value']) )
 
         return real_out
     
@@ -374,9 +374,7 @@ class FitMulti(BaseFitter):
         """
         super().__init__(data,rms,psf,mask = mask,loss_func = loss_func,renderer = renderer, renderer_kwargs = renderer_kwargs)
         self.prior = prior
-        if type(self.renderer) not in [FourierRenderer,HybridRenderer]:
-            raise AssertionError('Currently only FourierRenderer and HybridRenderer Supported for FitMulti')
-    
+        
     def build_model(self,) -> Callable:
         """Generate Numpyro model for the specified image, profile and priors
 

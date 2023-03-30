@@ -390,6 +390,46 @@ class PixelRenderer(BaseRenderer):
         shifted_psf = jax.scipy.ndimage.map_coordinates(self.pixel_PSF*flux, [self.X-dx,self.Y-dy], order = 1, mode = 'constant')
     
         return shifted_psf
+    
+    def render_multi(self, 
+            type_list: Iterable, 
+            var_list: Iterable)-> jax.numpy.array:
+        """Function to render multiple sources in the same image
+
+        Parameters
+        ----------
+        type_list : Iterable
+            List of strings containing the types of sources
+        var_list : Iterable
+            List of arrays contiaining the variables for each profile
+
+        Returns
+        -------
+        jax.numpy.array
+            Rendered image
+        """
+        
+        int_im = jnp.zeros_like(self.X)
+        obs_im = jnp.zeros_like(self.X)
+
+        for ind in range(len(type_list)):
+            if type_list[ind] == 'pointsource':
+                obs_im = obs_im + self.render_pointsource(*var_list[ind])
+            elif type_list[ind] == 'sersic':
+                int_im = int_im + self.render_int_sersic(*var_list[ind])
+            elif type_list[ind] == 'exp':
+                xc,yc, flux, r_eff,ellip, theta = var_list[ind]
+                int_im = int_im + self.render_int_sersic(xc,yc, flux, r_eff,1.,ellip, theta)
+            elif type_list[ind] == 'dev':
+                xc,yc, flux, r_eff,ellip, theta = var_list[ind]
+                int_im = int_im + self.render_int_sersic(xc,yc, flux, r_eff,4.,ellip, theta)
+            elif type_list[ind] == 'doublesersic':
+                xc, yc, flux, f_1, r_eff_1, n_1, ellip_1, r_eff_2, n_2, ellip_2, theta = var_list[ind]
+                int_im = int_im + self.render_int_sersic(xc,yc, flux*f_1, r_eff_1, n_1,ellip_1, theta)
+                int_im = int_im + self.render_int_sersic(xc,yc, flux*(1.-f_1), r_eff_2, n_2,ellip_2, theta)
+
+        im = self.conv(int_im) + obs_im
+        return im
 
 class FourierRenderer(BaseRenderer):
     """
@@ -792,7 +832,7 @@ class HybridRenderer(BaseRenderer):
         """
         
         F_tot = jnp.zeros_like(self.FX)
-        im_tot = np.zeros_like(self.X)
+        im_tot = jnp.zeros_like(self.X)
 
         for ind in range(len(type_list)):
             if type_list[ind] == 'pointsource':
