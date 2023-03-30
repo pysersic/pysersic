@@ -100,24 +100,29 @@ class BaseFitter(ABC):
             Numpyro distribution object corresponding to the prior
         """
         self.prior_dict[parameter] = distribution
-    
-    
 
 
     def sample(self,
-                sampler_kwargs: Optional[dict] =
-                dict(init_strategy = infer.init_to_sample),
-                mcmc_kwargs: Optional[dict] = 
-                dict(num_warmup=1000,
-                num_samples=1000,
-                num_chains=2,
-                progress_bar=True),
+                num_samples: int = 1000,
+                num_warmup: int = 1000,
+                num_chains: int = 2,
+                init_strategy: Optional[Callable] = infer.init_to_sample,
+                sampler_kwargs: Optional[dict] ={},
+                mcmc_kwargs: Optional[dict] = {},
                 rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3)     
         ) -> pandas.DataFrame:
-        """ Perform inference using the NUTS sampler using default parameters
+        """ Perform inference using a NUTS sampler
 
         Parameters
         ----------
+        num_samples : int, optional
+            Number of samples to draw, by default 1000
+        num_warmup : int, optional
+            Number of warmup samples, by default 1000
+        num_chains : int, optional
+            Number of chains to run, by default 2
+        init_strategy : Optional[Callable], optional
+            Initialization strategy for the sampler, by default infer.init_to_sample. See numpyro.infer.initialization for more options
         sampler_kwargs : Optional[dict], optional
             Arguments to pass to the numpyro NUTS kernel
         mcmc_kwargs : Optional[dict], optional
@@ -132,7 +137,7 @@ class BaseFitter(ABC):
         """
         model =  self.build_model()
         
-        self.sampler =infer.MCMC(infer.NUTS(model, **sampler_kwargs),**mcmc_kwargs)
+        self.sampler =infer.MCMC(infer.NUTS(model,init_strategy=init_strategy, **sampler_kwargs),num_chains=num_chains, num_samples=num_samples, num_warmup=num_warmup,  **mcmc_kwargs)
         self.sampler.run(rkey)
         self.sampling_results = PySersicResults(data=self.data,rms=self.rms,psf=self.psf,mask=self.mask,loss_func=self.loss_func,renderer=self.renderer)
         self.sampling_results.add_prior(self.prior)
@@ -144,12 +149,15 @@ class BaseFitter(ABC):
     def _train_SVI(self,
             autoguide: numpyro.infer.autoguide.AutoContinuous,
             method:str,
+            ELBO_loss: Optional[Callable] = infer.Trace_ELBO(1),
+            lr_init: Optional[int] = 1e-2,
+            num_round: Optional[int] = 3,
             SVI_kwargs: Optional[dict]= {},
             train_kwargs: Optional[dict] = {},
             rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(6),
             )-> pandas.DataFrame:
         """
-        Performance inference using stochastic variational inference.
+        Internal function to perform inference using stochastic variational inference.
 
         Parameters
         ----------
@@ -157,6 +165,12 @@ class BaseFitter(ABC):
             Function to build guide
         method: str
             name of method being used; for saving results
+        Elbo_loss : Optional[Callable], optional
+            Loss function to use, by default infer.Trace_ELBO(1), see numpyro.infer.elbo for more options
+        lr_init : Optional[int], optional
+            Initial learning rate, by default 1e-2
+        num_round : Optional[int], optional
+            Number of rounds for training, lr decreases each round, by default 3
         SVI_kwargs : Optional[dict], optional
             Additional arguments to pass to numpyro.infer.SVI, by default {}
         train_kwargs : Optional[dict], optional
@@ -172,8 +186,9 @@ class BaseFitter(ABC):
         model_cur = self.build_model()
         guide = autoguide(model_cur)
 
-        svi_kernel = SVI(model_cur,guide, Adam(0.1), **SVI_kwargs)
-        self.svi_result = train_numpyro_svi_early_stop(svi_kernel,rkey=rkey, **train_kwargs)
+        svi_kernel = SVI(model_cur,guide, Adam(0.1), loss = ELBO_loss, **SVI_kwargs)
+        self.svi_result = train_numpyro_svi_early_stop(svi_kernel,rkey=rkey,lr_init=lr_init,
+                                                        num_round=num_round **train_kwargs)
 
         svi_res_dict =  dict(guide = guide, model = model_cur, svi_result = self.svi_result)
         self.svi_results = PySersicResults(data=self.data,rms=self.rms,psf=self.psf,mask=self.mask,loss_func=self.loss_func,renderer=self.renderer)
@@ -186,7 +201,7 @@ class BaseFitter(ABC):
     
     def find_MAP(self,
                 rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3),):
-        """Eschew posterior estimation and simply return a dictionary with MAP (maximum a posteriori) values for the parameters.
+        """Find the "best-fit" parameters as the maximum a-posteriori and return a dictionary with values for the parameters.
 
         Parameters
         ----------
@@ -204,7 +219,7 @@ class BaseFitter(ABC):
         svi_kernel = SVI(model_cur,autoguide_map, Adam(0.01),loss=Trace_ELBO())
         
         res = train_numpyro_svi_early_stop(svi_kernel,rkey=rkey, **train_kwargs)
-        #map_estimate = autoguide_map() 
+
         use_dict = {}
         for key in res.params.keys():
             pref = key.split('_auto_loc')[0]
@@ -221,31 +236,31 @@ class BaseFitter(ABC):
     
     def estimate_posterior(self,
                         method:str='laplace',
-                        rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3),
-                        **kwargs) -> pandas.DataFrame:
-        """Estimate the posterior using one of several methods.
-        Options include:
+                        rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(6),
+                        ) -> pandas.DataFrame:
+        """Estimate the posterior using a method other than MCMC sampling. Generally faster than MCMC, but could be less accurate.
+        Current Options are:
         - 'laplace'
+            - Uses the Laplace approximation, which finds the MAP and then uses a Gaussian approximation to the posterior. The covariance matrix is calculated using the Hessian of the log posterior at the MAP.
         - 'svi-flow'
-
+            - Uses a normalizing flow (currently a BNAF, https://arxiv.org/abs/1904.04676) to approximate the posterior. This is more flexible than the Laplace approximation, but is slower to train.
 
         Parameters
         ----------
         method : str, optional
             method to use, by default 'laplace'
+        rkey : Optional[jax.random.PRNGKey], optional
+            rng key, by default jax.random.PRNGKey(6)
         """
         assert method in ['laplace','svi-flow']
         if method=='laplace':
-            train_kwargs = dict(lr_init = 1e-2, num_round = 3,frac_lr_decrease  = 0.1, patience = 250, optimizer = Adam)
-            svi_kwargs = dict(loss = Trace_ELBO(1))
-            guide_func = partial(infer.autoguide.AutoLaplaceApproximation, init_loc_fn = infer.init_to_median )
-
+            train_kwargs = dict(patience = 250)
+            guide_func = partial(infer.autoguide.AutoLaplaceApproximation, init_loc_fn = infer.init_to_sample )
+            results = self._train_SVI(guide_func,method=method, train_kwargs=train_kwargs, rkey=rkey)
         elif method=='svi-flow':
-            train_kwargs = dict(lr_init = 1e-2, num_round = 3,frac_lr_decrease  = 0.1, patience = 100, optimizer = Adam)
-            svi_kwargs = dict(loss = infer.TraceMeanField_ELBO(16))
-            guide_func = partial(infer.autoguide.AutoBNAFNormal, num_flows = 1)
+            guide_func = partial(infer.autoguide.AutoBNAFNormal, num_flows = 1, init_loc_fn = infer.init_to_sample)
+            results = self._train_SVI(guide_func,method=method,ELBO_loss= infer.TraceMeanField_ELBO(16), rkey=rkey)
 
-        results = self._train_SVI(guide_func,method=method, SVI_kwargs=svi_kwargs, train_kwargs=train_kwargs, rkey=rkey)
         return results.summary()
 
     @abstractmethod
