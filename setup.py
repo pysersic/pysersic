@@ -18,5 +18,6 @@ setuptools.setup(
         'numpyro',
         'arviz',
         'tqdm',
+        'asdf',
         ]
  )
