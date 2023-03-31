@@ -9,7 +9,14 @@ setuptools.setup(
     packages=["pysersic","pysersic/utils"],
     install_requires=['numpy',
         'scipy',
+        'matplotlib',
+        'pandas',
+        'astropy',
+        'corner',
+        'photutils>=0.16'
         'jax',
         'numpyro',
-        'arviz']
+        'arviz',
+        'tqdm',
+        ]
  )

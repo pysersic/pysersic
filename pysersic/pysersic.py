@@ -2,22 +2,16 @@ from abc import ABC, abstractmethod
 from functools import partial
 from typing import Callable, Optional, Union
 
-import arviz as az
 import jax
 import jax.numpy as jnp
 import numpy as np
 import numpyro
 import pandas
-from jax import random
 from numpyro import infer
-from numpyro.infer import SVI, Trace_ELBO, TraceMeanField_ELBO
-from numpyro.optim import Adam, optax_to_numpyro
-from numpyro.infer.util import Predictive
-from optax import adamw
-
+from numpyro.infer import SVI, Trace_ELBO
+from numpyro.optim import Adam
 from pysersic.rendering import (
     BaseRenderer,
-    FourierRenderer,
     HybridRenderer,
 )
 from pysersic.priors import PySersicSourcePrior, PySersicMultiPrior

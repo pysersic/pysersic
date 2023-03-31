@@ -1,13 +1,9 @@
-# I'm imagineing some class to plot results and compare model to data
-# In imcascade the results class injests the fitter class which works well I think but definetly open to suggestions.
-import matplotlib.pyplot as plt
 from typing import Callable, Optional, Union
 import numpyro 
 import jax 
 from jax import random 
 import pandas 
 import numpy as np 
-from mpl_toolkits.axes_grid1.axes_divider import make_axes_locatable
 import corner
 import jax.numpy as jnp
 import arviz as az 
@@ -15,10 +11,7 @@ ArrayLike = Union[np.array, jax.numpy.array]
 ListLike = Union[np.array,jax.numpy.array,list]
 from pysersic.rendering import (
     BaseRenderer,
-    FourierRenderer,
-    HybridRenderer,
 )
-from pysersic.utils import gaussian_loss, train_numpyro_svi_early_stop 
 import asdf 
 import pandas as pd 
 import xarray 
