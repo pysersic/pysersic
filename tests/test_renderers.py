@@ -9,7 +9,7 @@ from functools import partial
 
 kern = Gaussian2DKernel(x_stddev= 2.5)
 psf = kern.array
-err_tol = 0.025 # 2.5% error tolerence
+err_tol = 0.025 # 2.5% error tolerence for total flux
 
 @pytest.mark.parametrize("renderer", [PixelRenderer,FourierRenderer,HybridRenderer])
 @pytest.mark.parametrize("pos", [(50,50),(50.5,50.5),(50.25,50.25) ,(50.,50.5),(50.5,50.)]) 

@@ -602,7 +602,6 @@ def generate_exp_dev_prior(image: jax.numpy.array,
     prior.set_uniform_prior('ellip', 0,0.9)
     theta_guess = cat.orientation.to(u.rad).value
     prior.set_custom_prior('theta', dist.VonMises(loc = theta_guess,concentration=0), reparam= infer.reparam.CircularReparam() )
-    prior.set_truncated_gaussian_prior('n',2,1, low = 0.5,high = 8)
 
     if position_guess is None:
         xc_guess = cat.centroid_win[0]
