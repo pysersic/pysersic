@@ -414,7 +414,7 @@ class PySersicMultiPrior(BasePrior):
         super().__init__(sky_type = sky_type)
         self.catalog = catalog
         self.all_priors = []
-
+        self.N_sources = len(catalog['x'])
         image = jnp.ones((100,100)) # dummy image
         for ind in range(len(catalog['x'])):
 
@@ -435,6 +435,13 @@ class PySersicMultiPrior(BasePrior):
         
             self.all_priors.append(prior)
             self.reparam_dict.update(prior.reparam_dict)
+    
+    def __repr__(self,)-> str:
+        out = f"PySersicMultiPrior containing {len(self.all_priors):d} sources \n"
+        for i, source_prior in enumerate(self.all_priors):
+            out += f"\nSource {i:d} : " + source_prior.__repr__()
+        return out
+    
     def __call__(self) -> list:
         """Sample prior for all sources
 

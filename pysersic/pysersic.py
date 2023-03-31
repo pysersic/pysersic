@@ -22,7 +22,7 @@ ArrayLike = Union[np.array, jax.numpy.array]
 
 class BaseFitter(ABC):
     """
-    Bass class for Pysersic Fitters
+    Base class for Pysersic Fitters
     """
     def __init__(self,
         data: ArrayLike,
@@ -220,10 +220,10 @@ class BaseFitter(ABC):
             use_dict[pref] = res.params[key]
         trace_out = trace(condition(model_cur, use_dict)).get_trace()
         real_out = {}
-        for key in self.prior.param_names:
-            real_out[key] = float('{:.5e}'.format(trace_out[key]['value']) )
         for key in trace_out:
-            if ('sky' in key) and not ('base' in key):
+            if key == 'Loss':
+                continue
+            elif not ('base' in key or 'auto' in key or 'unwrapped' in key or 'factor' in key):
                 real_out[key] = float('{:.5e}'.format(trace_out[key]['value']) )
 
         return real_out
@@ -391,6 +391,26 @@ class FitMulti(BaseFitter):
             return loss
 
         return model
-    
-    def render_best_fit(self,):
-        raise NotImplementedError
+
+    def find_MAP(self,
+                rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3),):
+        """Find the "best-fit" parameters as the maximum a-posteriori and return a dictionary with values for the parameters.
+
+        Parameters
+        ----------
+        rkey : Optional[jax.random.PRNGKey], optional
+            rng key, by default jax.random.PRNGKey(3)
+
+        Returns
+        -------
+        dict
+            dictionary with fit parameters and their values.
+        """
+        raw_dict = super().find_MAP(rkey=rkey)
+        results_dict = {}
+        for i in range(self.prior.N_sources):
+            results_dict[f'source_{i}'] = {}
+            for pname in self.prior.all_priors[i].param_names:
+                results_dict[f'source_{i}'][pname] = raw_dict.pop(pname + f'_{i:d}')
+        results_dict.update(raw_dict)
+        return results_dict
