@@ -1,5 +1,6 @@
 import jax.numpy as jnp
 from numpyro import distributions as dist, sample, handlers, factor,deterministic
+from typing import Optional
 
 def gaussian_loss(mod: jnp.array,
                 data: jnp.array,
@@ -116,9 +117,10 @@ def gaussian_loss_w_sys(mod: jnp.array,
 def student_t_loss(mod: jnp.array,
                 data: jnp.array,
                 rms: jnp.array,
-                mask: jnp.array)-> float:
+                mask: jnp.array,
+                nu: Optional[int] = 5)-> float:
     """
-    Student T loss, with a fixed df = 5. This has fatter tails than Gaussian loss (or chi squared) so is more resiliant to outliers
+    Student T loss, with a df = 5 by default. This has fatter tails than Gaussian loss (or chi squared) so is more resiliant to outliers
 
     Parameters
     ----------
@@ -139,40 +141,13 @@ def student_t_loss(mod: jnp.array,
         loss =  sample("Loss", dist.StudentT(nu,mod,jnp.sqrt((nu-2.)/2.)*rms), obs=data)    
     return loss
 
-def student_t_loss_free_nu(mod: jnp.array,
+def student_t_loss_free_sys(mod: jnp.array,
                 data: jnp.array,
                 rms: jnp.array,
-                mask: jnp.array)-> float:
+                mask: jnp.array,
+                nu: Optional[int] = 5)-> float:
     """
-    Student T loss, with free df varied between 3 and 50. At low df, Student T has fatter tails than Gaussian loss (or chi squared) so is so is more resiliant to outliers. At high df, the Student T approachs a Gaussian distribution
-
-    Parameters
-    ----------
-    mod : jnp.array
-        Model image
-    data : jnp.array
-        data to be fit
-    rms : jnp.array
-        per pixel 1-sigma uncertainties
-
-    Returns
-    -------
-    float
-        Sampled loss function
-    """
-    nu_eff_base = sample('nu_eff_base', dist.Uniform())
-    nu = deterministic('nu_eff', nu_eff_base*47. + 3.)
-    rms_new = jnp.sqrt((nu-2.)/2.)*rms
-    with handlers.mask(mask = mask):
-        loss =  sample("Loss", dist.StudentT(nu, mod, rms_new), obs = data )
-    return loss
-
-def student_t_loss_free_nu_and_sys(mod: jnp.array,
-                data: jnp.array,
-                rms: jnp.array,
-                mask: jnp.array)-> float:
-    """
-    Student T loss, with free df varied between 3 and 50. At low df, Student T has fatter tails than Gaussian loss (or chi squared) so is so is more resiliant to outliers. At high df, the Student T approachs a Gaussian distribution. In addition, add additional systematic increase such_that
+    Student T loss, which has fatter tails than Gaussian loss (or chi squared) so is so is more resiliant to outliers. In addition, add additional systematic increase such that
 
     $$ \sigma_{new,i}^2 = \sigma_{old,i}^2 + \sigma_{sys}^2 $$
 
@@ -193,9 +168,6 @@ def student_t_loss_free_nu_and_sys(mod: jnp.array,
     float
         Sampled loss function
     """
-    nu_eff_base = sample('nu_eff_base', dist.Uniform())
-    nu = deterministic('nu_eff', nu_eff_base*47. + 3.)
-
     sys_scatter_base = sample('sys_scatter_base', dist.TruncatedNormal(low = 0, scale = 1 ) )
     sys_scatter = deterministic('sys_scatter', sys_scatter_base*jnp.mean(rms))
     rms_new = jnp.sqrt((nu-2.)/2.)*jnp.sqrt(rms**2 + sys_scatter**2)
@@ -203,3 +175,70 @@ def student_t_loss_free_nu_and_sys(mod: jnp.array,
     with handlers.mask(mask = mask):
         loss =  sample("Loss", dist.StudentT(nu, mod, rms_new), obs=data)    
     return loss
+
+def pseudo_huber_loss(mod: jnp.array,
+                data: jnp.array,
+                rms: jnp.array,
+                mask: jnp.array,
+                delta: Optional[int] = 3
+                )-> float:
+    """
+    Pseudo huber loss function of the form:
+
+    $$ L = \delta^2 * ( \sqrt{1 + (a/\delta)^2} - 1) $$
+
+    where a is the residuals scaled by the rms and delta can be chosen. This loss function is more robust to outliers than the Gaussian loss function as it is meant to transition for L2 to L1 loss at residuals greater than delta. The delta parameter is 3 by default but can be varied.
+
+    Parameters
+    ----------
+    mod : jnp.array
+        Model image
+    data : jnp.array
+        data to be fit
+    rms : jnp.array
+        per pixel 1-sigma uncertainties
+
+    Returns
+    -------
+    float
+        Sampled loss function
+    """
+    
+    with handlers.mask(mask = mask):
+        res = (data-mod)/rms
+        loss = factor('pseudo_huber_loss', -1.*(jnp.sqrt(1 + ( res/delta )**2) - 1) )
+    return loss
+
+def gaussian_mixture(mod: jnp.array,
+                data: jnp.array,
+                rms: jnp.array,
+                mask: jnp.array,
+                c: Optional[float] = 5.
+                )-> float:
+    """
+    Gaussian mixture loss function, with one representing a "contaminating" outlier distribution with standard deviation equal to c*rms where c is 5 by default. The "contaminating fraction" or fraction of outliers is a free parameter with a Uniform prior between 0 and 0.25.
+
+    Parameters
+    ----------
+    Parameters
+    ----------
+    mod : jnp.array
+        Model image
+    data : jnp.array
+        data to be fit
+    rms : jnp.array
+        per pixel 1-sigma uncertainties
+    c : float, optional
+        factor to increase rms for outlier distribution, by default 5
+
+    Returns
+    -------
+    float
+        _description_
+    """
+    contam_frac = sample('contam_frac', dist.Uniform(low = 0, high = 0.25) )
+    mixture_dists = dist.Categorical(probs = jnp.array([1-contam_frac, contam_frac]))
+    component_dists = [ dist.Normal(mod, rms),dist.Normal(mod, rms*c),]
+
+    with handlers.mask(mask = mask):
+        loss = sample("Loss", dist.MixtureGeneral(mixture_dists, component_dists), obs=data)

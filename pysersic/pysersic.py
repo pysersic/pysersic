@@ -223,7 +223,7 @@ class BaseFitter(ABC):
         for key in trace_out:
             if key == 'Loss':
                 continue
-            elif not ('base' in key or 'auto' in key or 'unwrapped' in key or 'factor' in key):
+            elif not ('base' in key or 'auto' in key or 'unwrapped' in key or 'factor' in key or 'loss' in key):
                 real_out[key] = float('{:.5e}'.format(trace_out[key]['value']) )
 
         return real_out
@@ -237,7 +237,7 @@ class BaseFitter(ABC):
         - 'laplace'
             - Uses the Laplace approximation, which finds the MAP and then uses a Gaussian approximation to the posterior. The covariance matrix is calculated using the Hessian of the log posterior at the MAP.
         - 'svi-flow'
-            - Uses a normalizing flow (currently a BNAF, https://arxiv.org/abs/1904.04676) to approximate the posterior. This is more flexible than the Laplace approximation, but is slower to train.
+            - Uses a normalizing flow (currently a BNAF, https://arxiv.org/abs/1904.04676) to approximate the posterior. This is more flexible than the Laplace approximation, but is slower to train. Optimization is still inconsistent at this moment so use and interpret with caution.
 
         Parameters
         ----------
@@ -252,8 +252,9 @@ class BaseFitter(ABC):
             guide_func = partial(infer.autoguide.AutoLaplaceApproximation, init_loc_fn = infer.init_to_sample )
             results = self._train_SVI(guide_func,method=method, train_kwargs=train_kwargs, rkey=rkey)
         elif method=='svi-flow':
+            train_kwargs = dict(patience = 2000, max_train = 30000)
             guide_func = partial(infer.autoguide.AutoBNAFNormal, num_flows = 1, init_loc_fn = infer.init_to_sample)
-            results = self._train_SVI(guide_func,method=method,ELBO_loss= infer.TraceMeanField_ELBO(16), rkey=rkey)
+            results = self._train_SVI(guide_func,method='svi-flow',ELBO_loss= infer.Trace_ELBO(1),train_kwargs=train_kwargs,num_round=2,lr_init = 1e-4, rkey=rkey)
 
         return results.summary()
 

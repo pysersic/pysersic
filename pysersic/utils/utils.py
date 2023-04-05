@@ -117,7 +117,7 @@ def train_numpyro_svi_early_stop(
                     break
                 else:
                     wait_counter += 1
-                t.set_postfix_str(f'Round = {r:d},step_size = {lr_cur:.1e} log(-loss): {jnp.log(-best_loss):.4f}',refresh=False)
+                t.set_postfix_str(f'Round = {r:d},step_size = {lr_cur:.1e} loss: {best_loss:.3e}',refresh=False)
                 losses.append(loss)
         
         all_losses.append(losses)
