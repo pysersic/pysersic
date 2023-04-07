@@ -236,9 +236,51 @@ def gaussian_mixture(mod: jnp.array,
     float
         _description_
     """
-    contam_frac = sample('contam_frac', dist.Uniform(low = 0, high = 0.25) )
+    contam_frac_base = sample('contam_frac_base', dist.TruncatedNormal(low = 0, scale = 1., high = 5.) )
+    contam_frac = deterministic('contam_frac', contam_frac_base*0.05 )
+
     mixture_dists = dist.Categorical(probs = jnp.array([1-contam_frac, contam_frac]))
-    component_dists = [ dist.Normal(mod, rms),dist.Normal(mod, rms*c),]
+    component_dists = dist.Normal(jnp.stack([mod,mod],axis = -1), jnp.stack([rms,c*rms],axis = -1) )
 
     with handlers.mask(mask = mask):
-        loss = sample("Loss", dist.MixtureGeneral(mixture_dists, component_dists), obs=data)
+        loss = sample("Loss", dist.MixtureSameFamily(mixture_dists, component_dists), obs=data)
+
+def gaussian_mixture_w_sys(mod: jnp.array,
+                data: jnp.array,
+                rms: jnp.array,
+                mask: jnp.array,
+                c: Optional[float] = 5.
+                )-> float:
+    """
+    Gaussian mixture loss function, with one representing a "contaminating" outlier distribution with standard deviation equal to c*rms where c is 5 by default. The "contaminating fraction" or fraction of outliers is a free parameter with a Uniform prior between 0 and 0.25.
+
+    Parameters
+    ----------
+    Parameters
+    ----------
+    mod : jnp.array
+        Model image
+    data : jnp.array
+        data to be fit
+    rms : jnp.array
+        per pixel 1-sigma uncertainties
+    c : float, optional
+        factor to increase rms for outlier distribution, by default 5
+
+    Returns
+    -------
+    float
+        _description_
+    """
+    contam_frac_base = sample('contam_frac_base', dist.TruncatedNormal(low = 0, scale = 1., high = 5.) )
+    contam_frac = deterministic('contam_frac', contam_frac_base*0.05 )
+
+    sys_scatter_base = sample('sys_scatter_base', dist.TruncatedNormal(low = 0, scale = 1 ) )
+    sys_scatter = deterministic('sys_scatter', sys_scatter_base*jnp.mean(rms))
+
+    rms_new = jnp.sqrt(rms**2 + sys_scatter**2)
+    mixture_dists = dist.Categorical(probs = jnp.array([1-contam_frac, contam_frac]))
+    component_dists = dist.Normal(jnp.stack([mod,mod],axis = -1), jnp.stack([rms_new,c*rms_new],axis = -1) )
+
+    with handlers.mask(mask = mask):
+        loss = sample("Loss", dist.MixtureSameFamily(mixture_dists, component_dists), obs=data)

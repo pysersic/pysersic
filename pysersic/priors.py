@@ -220,8 +220,10 @@ class PySersicSourcePrior(BasePrior):
 
         arr = []
         for (param,prior) in zip(self.param_names,self.dist_list):
-            arr.append(sample(param+self.suffix, prior) )
-
+            if issubclass(type(prior), dist.Distribution):
+                arr.append(sample(param+self.suffix, prior) )
+            else:
+                arr.append(prior)
         return jnp.array(arr)      
 
     def set_gaussian_prior(self,var_name: str, loc: float, scale: float) -> "PySersicSourcePrior":

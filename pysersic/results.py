@@ -1,4 +1,4 @@
-from typing import Callable, Optional, Union
+from typing import Callable, Optional, Union, Tuple
 import numpyro 
 import jax 
 from jax import random 
@@ -109,13 +109,14 @@ class PySersicResults():
 
         elif sampler is not None:
             self.idata = az.from_numpyro(sampler)
+            self.input  = sampler
             self.idata = self._parse_injested_data(self.idata,purge_extra=purge_extra)
             self.runtype = 'sampling'
         else:
             assert 'guide' in svi_res_dict.keys()
             assert 'model' in svi_res_dict.keys()
             assert 'svi_result' in svi_res_dict.keys()
-
+            self.input  = svi_res_dict
             post_raw = svi_res_dict['guide'].sample_posterior(rkey, svi_res_dict['svi_result'].params, sample_shape = ((1000,)))
             #Convert to arviz
             post_dict = {}
@@ -154,8 +155,10 @@ class PySersicResults():
             for var in var_names:
                 if ('base' in var) or ('auto' in var) or ('unwrapped' in var):
                     to_drop.append(var)
-
-            data.posterior = data.posterior.drop_vars(to_drop)
+                elif var == 'model':
+                    to_drop.append(var)
+                    self.models = data['posterior'][var]
+            data.posterior = data.posterior.drop_vars(to_drop).drop_dims(['model_dim_0','model_dim_1'], errors = 'ignore')
         return data
 
 
@@ -170,18 +173,27 @@ class PySersicResults():
         return az.summary(self.idata)
     
 
-    def render_best_fit_model(self,)->ArrayLike:
-        """Create a model image using the median posterior values of the parameters.
+    def get_median_model(self,)->Tuple[pd.DataFrame ,ArrayLike]:
+        """Selects the best fit model from the posterior draw that is closest to the median.
 
         Returns
         -------
         ArrayLike
             model image
         """
-        medians = self.idata.posterior.median() 
-        median_params = jnp.array([medians[name].data for name in self.prior.param_names])
-        mod = self.renderer.render_source(median_params, self.prior.profile_type)
-        return mod
+        #medians = self.idata.posterior.median() 
+        #median_params = jnp.array([medians[name].data for name in self.prior.param_names])
+        #mod = self.renderer.render_source(median_params, self.prior.profile_type)
+        
+
+        post_array = self.idata.to_dataframe().drop( columns = ['chain','draw']).to_numpy()
+        dim_raw = np.argmin( np.abs(post_array -  np.median(post_array, axis = 0)) )
+
+        draws = self.idata.posterior.dims['draw']
+        chain, draw = dim_raw //draws , dim_raw%draws
+        params = self.idata.posterior.sel(chain = chain, draw = draw).to_pandas()
+        model_im = self.models.sel(chain = chain, draw = draw).values
+        return params, model_im
     
 
     def corner(self,quantiles=[.16,.50,.84,],**kwargs):
@@ -230,6 +242,18 @@ class PySersicResults():
             df = pd.DataFrame.from_dict(out).T
             df.columns = quantiles
             return df 
+
+    def retrieve_med_std(self,return_dataframe:bool=False)->Union[pd.DataFrame,dict]:
+        out = {}
+        q_dict = self.retrieve_param_quantiles()
+        for key in q_dict.keys():
+            qs = q_dict[key]
+            med = qs[1]
+            std = 0.5*np.abs(qs[2] - qs[0])
+            out[key] = np.array([med,std])
+        if return_dataframe:
+            out = pd.DataFrame.from_dict(out).T.rename(columns= {0:'median',1:'std'})
+        return out
 
 
     def latex_table(self,quantiles:ListLike=[0.16,0.5,0.84]):

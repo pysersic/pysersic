@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import numpy as np
 import numpyro
 import pandas
-from numpyro import infer
+from numpyro import infer, deterministic
 from numpyro.infer import SVI, Trace_ELBO
 from numpyro.optim import Adam
 from pysersic.rendering import (
@@ -103,6 +103,7 @@ class BaseFitter(ABC):
                 init_strategy: Optional[Callable] = infer.init_to_sample,
                 sampler_kwargs: Optional[dict] ={},
                 mcmc_kwargs: Optional[dict] = {},
+                return_model: Optional[bool] = True,
                 rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3)     
         ) -> pandas.DataFrame:
         """ Perform inference using a NUTS sampler
@@ -121,6 +122,8 @@ class BaseFitter(ABC):
             Arguments to pass to the numpyro NUTS kernel
         mcmc_kwargs : Optional[dict], optional
             Arguments to pass to the numpyro MCMC sampler
+        return_model : Optional[bool]
+            Whether to return the model images but adds a small memory/time overhead, by default True
         rkey : Optional[jax.random.PRNGKey], optional
             PRNG key to use, by default jax.random.PRNGKey(3)
 
@@ -129,7 +132,7 @@ class BaseFitter(ABC):
         pandas.DataFrame
             ArviZ summary of posterior
         """
-        model =  self.build_model()
+        model =  self.build_model(return_model = return_model)
         
         self.sampler =infer.MCMC(infer.NUTS(model,init_strategy=init_strategy, **sampler_kwargs),num_chains=num_chains, num_samples=num_samples, num_warmup=num_warmup,  **mcmc_kwargs)
         self.sampler.run(rkey)
@@ -148,6 +151,7 @@ class BaseFitter(ABC):
             num_round: Optional[int] = 3,
             SVI_kwargs: Optional[dict]= {},
             train_kwargs: Optional[dict] = {},
+            return_model: Optional[bool] = True,
             rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(6),
             )-> pandas.DataFrame:
         """
@@ -169,6 +173,8 @@ class BaseFitter(ABC):
             Additional arguments to pass to numpyro.infer.SVI, by default {}
         train_kwargs : Optional[dict], optional
             Additional arguments to pass to utils.train_numpyro_svi_early_stop, by default {}
+        return_model : Optional[bool]
+            Whether to return the model images but adds a small memory/time overhead, by default True
         rkey : Optional[jax.random.PRNGKey], optional
             PRNG key, by default jax.random.PRNGKey(6)
 
@@ -177,14 +183,14 @@ class BaseFitter(ABC):
         pandas.DataFrame
             ArviZ summary of posterior
         """
-        model_cur = self.build_model()
+        model_cur = self.build_model(return_model=return_model)
         guide = autoguide(model_cur)
 
         svi_kernel = SVI(model_cur,guide, Adam(0.1), loss = ELBO_loss, **SVI_kwargs)
-        self.svi_result = train_numpyro_svi_early_stop(svi_kernel,rkey=rkey,lr_init=lr_init,
+        numpyro_svi_result = train_numpyro_svi_early_stop(svi_kernel,rkey=rkey,lr_init=lr_init,
                                                         num_round=num_round, **train_kwargs)
 
-        svi_res_dict =  dict(guide = guide, model = model_cur, svi_result = self.svi_result)
+        svi_res_dict =  dict(guide = guide, model = model_cur, svi_result = numpyro_svi_result)
         self.svi_results = PySersicResults(data=self.data,rms=self.rms,psf=self.psf,mask=self.mask,loss_func=self.loss_func,renderer=self.renderer)
         self.svi_results.injest_data(svi_res_dict=svi_res_dict,purge_extra=True)
         self.svi_results.add_prior(self.prior)
@@ -194,11 +200,14 @@ class BaseFitter(ABC):
 
     
     def find_MAP(self,
+                return_model: Optional[bool] = True,
                 rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3),):
         """Find the "best-fit" parameters as the maximum a-posteriori and return a dictionary with values for the parameters.
 
         Parameters
         ----------
+        return_model : Optional[bool]
+            Whether to return the model images but adds a small memory/time overhead, by default True
         rkey : Optional[jax.random.PRNGKey], optional
             rng key, by default jax.random.PRNGKey(3)
 
@@ -207,7 +216,7 @@ class BaseFitter(ABC):
         dict
             dictionary with fit parameters and their values.
         """
-        model_cur = self.build_model()
+        model_cur = self.build_model(return_model=return_model)
         autoguide_map = infer.autoguide.AutoDelta(model_cur, init_loc_fn= infer.init_to_median)
         train_kwargs = dict(lr_init = 0.01, num_round = 3,frac_lr_decrease  = 0.1, patience = 250, optimizer = Adam)
         svi_kernel = SVI(model_cur,autoguide_map, Adam(0.01),loss=Trace_ELBO())
@@ -223,13 +232,16 @@ class BaseFitter(ABC):
         for key in trace_out:
             if key == 'Loss':
                 continue
+            elif key == 'model':
+                real_out[key] = np.asarray(trace_out[key]['value'])
             elif not ('base' in key or 'auto' in key or 'unwrapped' in key or 'factor' in key or 'loss' in key):
                 real_out[key] = float('{:.5e}'.format(trace_out[key]['value']) )
 
         return real_out
     
     def estimate_posterior(self,
-                        method:str='laplace',
+                        method : str='laplace',
+                        return_model: bool = True,
                         rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(6),
                         ) -> pandas.DataFrame:
         """Estimate the posterior using a method other than MCMC sampling. Generally faster than MCMC, but could be less accurate.
@@ -237,29 +249,31 @@ class BaseFitter(ABC):
         - 'laplace'
             - Uses the Laplace approximation, which finds the MAP and then uses a Gaussian approximation to the posterior. The covariance matrix is calculated using the Hessian of the log posterior at the MAP.
         - 'svi-flow'
-            - Uses a normalizing flow (currently a BNAF, https://arxiv.org/abs/1904.04676) to approximate the posterior. This is more flexible than the Laplace approximation, but is slower to train. Optimization is still inconsistent at this moment so use and interpret with caution.
+            - Uses a normalizing flow (currently a BNAF, https://arxiv.org/abs/1904.04676) to approximate the posterior. This is more flexible than the Laplace approximation, but is slower to train. Optimization can be inconsistet so use and interpret with caution. Best to cross-reference with sample on tests cases.
 
         Parameters
         ----------
         method : str, optional
             method to use, by default 'laplace'
+        return_model : Optional[bool]
+            Whether to return the model images but adds a small memory/time overhead, by default True
         rkey : Optional[jax.random.PRNGKey], optional
             rng key, by default jax.random.PRNGKey(6)
+        
         """
         assert method in ['laplace','svi-flow']
         if method=='laplace':
             train_kwargs = dict(patience = 250)
             guide_func = partial(infer.autoguide.AutoLaplaceApproximation, init_loc_fn = infer.init_to_sample )
-            results = self._train_SVI(guide_func,method=method, train_kwargs=train_kwargs, rkey=rkey)
+            results = self._train_SVI(guide_func,method=method, train_kwargs=train_kwargs, return_model = return_model, rkey=rkey)
         elif method=='svi-flow':
-            train_kwargs = dict(patience = 2000, max_train = 30000)
-            guide_func = partial(infer.autoguide.AutoBNAFNormal, num_flows = 1, init_loc_fn = infer.init_to_sample)
-            results = self._train_SVI(guide_func,method='svi-flow',ELBO_loss= infer.Trace_ELBO(1),train_kwargs=train_kwargs,num_round=2,lr_init = 1e-4, rkey=rkey)
-
+            train_kwargs = dict(patience = 500, max_train = 20000)
+            guide_func = partial(infer.autoguide.AutoBNAFNormal, num_flows =4,hidden_factors = [5,], init_loc_fn = infer.init_to_median)
+            results = self._train_SVI(guide_func,method='svi-flow',ELBO_loss= infer.Trace_ELBO(8),train_kwargs=train_kwargs,num_round=3,lr_init = 1e-2, rkey=rkey,return_model = return_model,)
         return results.summary()
 
     @abstractmethod
-    def build_model(self,):
+    def build_model(self,return_model: bool = True):
         raise NotImplementedError
 
 
@@ -306,7 +320,7 @@ class FitSingle(BaseFitter):
         
 
 
-    def build_model(self,) -> Callable:
+    def build_model(self, return_model: bool = True) -> Callable:
         """ Generate Numpyro model for the specified image, profile and priors
 
         Returns
@@ -320,14 +334,15 @@ class FitSingle(BaseFitter):
             raise AssertionError('Not all variables have priors, please run .autogenerate_priors')
 
         @numpyro.handlers.reparam(config = self.prior.reparam_dict)
-        def model():
+        def model(return_model: bool = return_model):
             params = self.prior()
             out = self.renderer.render_source(params, self.prior.profile_type)
 
             sky = self.prior.sample_sky(self.renderer.X, self.renderer.Y)
 
             obs = out + sky
-            
+            if return_model:
+                obs = deterministic('model', obs)
             self.loss_func(obs, self.data, self.rms, self.mask)
         return model
 
@@ -370,7 +385,7 @@ class FitMulti(BaseFitter):
         super().__init__(data,rms,psf,mask = mask,loss_func = loss_func,renderer = renderer, renderer_kwargs = renderer_kwargs)
         self.prior = prior
         
-    def build_model(self,) -> Callable:
+    def build_model(self, return_model: bool = True) -> Callable:
         """Generate Numpyro model for the specified image, profile and priors
 
         Returns
@@ -380,13 +395,16 @@ class FitMulti(BaseFitter):
         """
 
         @numpyro.handlers.reparam(config = self.prior.reparam_dict)
-        def model():
+        def model(return_model: bool = return_model):
             source_variables = self.prior()
 
             out = self.renderer.render_multi(self.prior.catalog['type'],source_variables)
             sky = self.prior.sample_sky(self.renderer.X, self.renderer.Y)
 
             obs = out + sky
+
+            if return_model:
+                obs = deterministic('model', obs)
             
             loss = self.loss_func(obs, self.data, self.rms, self.mask)
             return loss
@@ -394,11 +412,14 @@ class FitMulti(BaseFitter):
         return model
 
     def find_MAP(self,
+                return_model: Optional[bool] = True,
                 rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3),):
         """Find the "best-fit" parameters as the maximum a-posteriori and return a dictionary with values for the parameters.
 
         Parameters
         ----------
+        return_model : Optional[bool], optional
+            whether to return the model image, adds a small time and memory overhead, by default True
         rkey : Optional[jax.random.PRNGKey], optional
             rng key, by default jax.random.PRNGKey(3)
 
@@ -407,7 +428,7 @@ class FitMulti(BaseFitter):
         dict
             dictionary with fit parameters and their values.
         """
-        raw_dict = super().find_MAP(rkey=rkey)
+        raw_dict = super().find_MAP(return_model=return_model, rkey=rkey)
         results_dict = {}
         for i in range(self.prior.N_sources):
             results_dict[f'source_{i}'] = {}
