@@ -244,6 +244,7 @@ def gaussian_mixture(mod: jnp.array,
 
     with handlers.mask(mask = mask):
         loss = sample("Loss", dist.MixtureSameFamily(mixture_dists, component_dists), obs=data)
+    return loss
 
 def gaussian_mixture_w_sys(mod: jnp.array,
                 data: jnp.array,
@@ -284,3 +285,4 @@ def gaussian_mixture_w_sys(mod: jnp.array,
 
     with handlers.mask(mask = mask):
         loss = sample("Loss", dist.MixtureSameFamily(mixture_dists, component_dists), obs=data)
+    return loss

@@ -8,7 +8,8 @@ from typing import Union, Optional, Iterable
 from abc import ABC
 from .utils.utils import render_tilted_plane_sky
 from photutils.morphology import data_properties
-import astropy.units as u 
+import astropy.units as u
+
 
 base_sky_types = ['none','flat','tilted-plane']
 base_sky_params = dict(
@@ -432,8 +433,11 @@ class PySersicMultiPrior(BasePrior):
                 init.pop('r_eff_guess')
                 prior = generate_pointsource_prior(image,suffix = f'_{ind:d}', **init)
 
-            elif catalog['type'][ind] in ['exp','dev']:
-                prior = generate_exp_dev_prior(image,suffix = f'_{ind:d}', **init)
+            elif catalog['type'][ind] == 'exp':
+                prior = generate_exp_prior(image,suffix = f'_{ind:d}', **init)
+            
+            elif catalog['type'][ind] == 'dev':
+                prior = generate_dev_prior(image,suffix = f'_{ind:d}', **init)
         
             self.all_priors.append(prior)
             self.reparam_dict.update(prior.reparam_dict)
@@ -486,8 +490,11 @@ def autoprior(image: jax.numpy.array,
     elif profile_type == 'pointsource':
         prior_dict = generate_pointsource_prior(image, sky_type = sky_type,mask=mask)
    
-    elif profile_type in ['exp','dev']:
-        prior_dict = generate_exp_dev_prior(image, sky_type = sky_type,mask=mask)
+    elif profile_type in 'exp':
+        prior_dict = generate_exp_prior(image, sky_type = sky_type,mask=mask)
+
+    elif profile_type in 'dev':
+        prior_dict = generate_dev_prior(image, sky_type = sky_type,mask=mask)
     
     return prior_dict
 
@@ -544,7 +551,11 @@ def generate_sersic_prior(image: jax.numpy.array,
 
     prior.set_uniform_prior('ellip', 0,0.9)
     theta_guess = cat.orientation.to(u.rad).value
-    prior.set_custom_prior('theta', dist.VonMises(loc = theta_guess,concentration=0), reparam= infer.reparam.CircularReparam() )
+
+    if np.isnan(theta_guess):
+        theta_guess = 0
+
+    prior.set_custom_prior('theta', dist.VonMises(loc = theta_guess,concentration=2), reparam= infer.reparam.CircularReparam() )
     prior.set_truncated_gaussian_prior('n',2,1, low = 0.5,high = 8)
 
     if position_guess is None:
@@ -559,7 +570,7 @@ def generate_sersic_prior(image: jax.numpy.array,
 
     return prior 
 
-def generate_exp_dev_prior(image: jax.numpy.array, 
+def generate_exp_prior(image: jax.numpy.array, 
         mask: Optional[jax.numpy.array] = None, 
         flux_guess: Optional[float] = None,
         r_eff_guess: Optional[float] = None, 
@@ -610,7 +621,80 @@ def generate_exp_dev_prior(image: jax.numpy.array,
 
     prior.set_uniform_prior('ellip', 0,0.9)
     theta_guess = cat.orientation.to(u.rad).value
-    prior.set_custom_prior('theta', dist.VonMises(loc = theta_guess,concentration=0), reparam= infer.reparam.CircularReparam() )
+        
+    if np.isnan(theta_guess):
+        theta_guess = 0
+
+    prior.set_custom_prior('theta', dist.VonMises(loc = theta_guess,concentration=2), reparam= infer.reparam.CircularReparam() )
+
+    if position_guess is None:
+        xc_guess = cat.centroid_win[0]
+        yc_guess = cat.centroid_win[1]
+    else:
+        xc_guess = position_guess[0]
+        yc_guess = position_guess[1]
+
+    prior.set_gaussian_prior('xc', xc_guess, 1)
+    prior.set_gaussian_prior('yc', yc_guess, 1)
+
+    return prior
+
+def generate_dev_prior(image: jax.numpy.array, 
+        mask: Optional[jax.numpy.array] = None, 
+        flux_guess: Optional[float] = None,
+        r_eff_guess: Optional[float] = None, 
+        position_guess: Optional[Iterable] = None,
+        sky_type: Optional[str] = 'none',
+        suffix: Optional[str] = '')-> PySersicSourcePrior:
+    """ Derive automatic priors for a exp or dev profile based on an input image.
+    
+    Parameters
+    ----------
+    image : jax.numpy.array
+        Masked image
+    mask: jax.numpy.array, optional
+        mask if image isn't already masked, by default None
+    flux_guess : Optional[float], optional
+        Estimate of total flux, by default None
+    r_eff_guess : Optional[float], optional
+        Estimate of effective radius, by default None
+    position_guess : Optional[Iterable], optional
+        Estimate of central position, by default None
+    sky_type : str, default 'none'
+        Type of sky model to use, must be one of: 'none', 'flat', 'tilted-plane'
+    
+    Returns
+    -------
+    dict
+        Dictionary containing numpyro Distribution objects for each parameter
+
+    """
+    
+    prior = PySersicSourcePrior('dev', sky_type= sky_type, suffix=suffix)
+    if mask is not None:
+        cat = data_properties(image,mask=mask.astype(bool))
+    else:
+        cat = data_properties(image)
+    if flux_guess is None:
+        flux_guess = cat.segment_flux
+    prior.set_gaussian_prior('flux',flux_guess,2*jnp.sqrt(flux_guess))
+    
+
+    
+    if r_eff_guess is None:
+        r_eff_guess = (cat.semimajor_sigma/2.).value
+    
+    r_loc = r_eff_guess
+    r_scale = jnp.sqrt(r_eff_guess)
+    prior.set_truncated_gaussian_prior('r_eff', r_loc,r_scale, low = 0.5)
+
+    prior.set_uniform_prior('ellip', 0,0.9)
+    theta_guess = cat.orientation.to(u.rad).value
+    
+    if np.isnan(theta_guess):
+        theta_guess = 0
+
+    prior.set_custom_prior('theta', dist.VonMises(loc = theta_guess,concentration=2), reparam= infer.reparam.CircularReparam() )
 
     if position_guess is None:
         xc_guess = cat.centroid_win[0]
@@ -666,7 +750,11 @@ def generate_doublesersic_prior(image: jax.numpy.array,
     prior.set_gaussian_prior('flux',flux_guess,2*jnp.sqrt(flux_guess))
     prior.set_uniform_prior('f_1', 0.,1.)
     theta_guess = cat.orientation.to(u.rad).value
-    prior.set_custom_prior('theta', dist.VonMises(loc = theta_guess,concentration=0), reparam= infer.reparam.CircularReparam() )
+    
+    if np.isnan(theta_guess):
+        theta_guess = 0
+
+    prior.set_custom_prior('theta', dist.VonMises(loc = theta_guess,concentration=2), reparam= infer.reparam.CircularReparam() )
 
     if r_eff_guess is None:
         r_eff_guess = (cat.semimajor_sigma/2.).value

@@ -10,7 +10,7 @@ from .utils.rendering_utils import (
     calculate_etas_betas,
     sersic_gauss_decomp,
 )
-from abc import abstractmethod
+from abc import abstractmethod,ABC
 from typing import Union, Optional, Iterable
 
 base_profile_types = ['sersic','doublesersic','pointsource','exp','dev']
@@ -25,7 +25,7 @@ base_profile_params =dict(
 )
 
 
-class BaseRenderer(object):
+class BaseRenderer(ABC):
     def __init__(self, 
             im_shape: Iterable, 
             pixel_PSF: jax.numpy.array
