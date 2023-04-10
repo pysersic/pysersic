@@ -1,4 +1,5 @@
 import jax.numpy as jnp
+from numpyro import distributions as dist, sample, handlers
 from typing import Union, Optional, Callable
 from numpyro.infer.svi import SVI, SVIRunResult
 from numpyro import optim
@@ -7,6 +8,12 @@ from jax import jit
 from functools import partial
 import copy
 import tqdm
+
+@jit
+def render_tilted_plane_sky(X,Y,back,x_sl,y_sl ):
+    xmid = float(X.shape[0]/2.)
+    ymid = float(Y.shape[0]/2.)
+    return back + (X-xmid)*x_sl + (Y-ymid)*y_sl
 
 
 def train_numpyro_svi_early_stop(
