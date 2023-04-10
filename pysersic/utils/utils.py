@@ -1,5 +1,4 @@
 import jax.numpy as jnp
-from numpyro import distributions as dist, sample, handlers
 from typing import Union, Optional, Callable
 from numpyro.infer.svi import SVI, SVIRunResult
 from numpyro import optim
@@ -8,41 +7,6 @@ from jax import jit
 from functools import partial
 import copy
 import tqdm
-
-@jit
-def render_tilted_plane_sky(X,Y,back,x_sl,y_sl ):
-    xmid = float(X.shape[0]/2.)
-    ymid = float(Y.shape[0]/2.)
-    return back + (X-xmid)*x_sl + (Y-ymid)*y_sl
-
-def sample_sky(
-        prior_dict: dict,
-        sky_type:str)-> jnp.array:
-    """Utilitly function to sample parameters for different types of sky models
-
-    Parameters
-    ----------
-    prior_dict : dict
-        Dictionary containing nupmyro Distribution objects for each parameter
-    sky_type : str
-        Type of sky model to use
-
-    Returns
-    -------
-    jnp.array
-        _description_
-    """
-    if sky_type is None:
-        params = 0
-    elif sky_type == 'flat':
-        sky0 = sample('sky0', prior_dict['sky0'])
-        params = sky0
-    else:
-        sky0 = sample('sky0', prior_dict['sky0'])
-        sky1 = sample('sky1', prior_dict['sky1'])
-        sky2 = sample('sky2', prior_dict['sky2'])
-        params = jnp.array([sky0,sky1,sky2])
-    return params
 
 
 def train_numpyro_svi_early_stop(
