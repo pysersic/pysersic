@@ -174,20 +174,16 @@ class PySersicResults():
     
 
     def get_median_model(self,)->Tuple[pd.DataFrame ,ArrayLike]:
-        """Selects the best fit model from the posterior draw that is closest to the median.
+        """Selects the best fit model from the posterior draw that is closest to the median. returns the paramaters of the given draw and the model image. For the model images corresponding to every draw use the `.models` attribute of the results class.
 
         Returns
         -------
         ArrayLike
             model image
         """
-        #medians = self.idata.posterior.median() 
-        #median_params = jnp.array([medians[name].data for name in self.prior.param_names])
-        #mod = self.renderer.render_source(median_params, self.prior.profile_type)
-        
-
-        post_array = self.idata.to_dataframe().drop( columns = ['chain','draw']).to_numpy()
-        dim_raw = np.argmin( np.abs(post_array -  np.median(post_array, axis = 0)) )
+        post_array = self.idata.posterior.to_dataframe().to_numpy()
+        med_vals =  np.median(post_array, axis = 0)
+        dim_raw = np.argmin( np.sum( np.abs(post_array - med_vals), axis = 1 ) ) # rough way to find closest draw to the median
 
         draws = self.idata.posterior.dims['draw']
         chain, draw = dim_raw //draws , dim_raw%draws
