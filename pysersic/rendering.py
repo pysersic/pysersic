@@ -265,7 +265,7 @@ class PixelRenderer(BaseRenderer):
             img_fft = jnp.fft.rfft2(image)
             conv_fft = img_fft*self.PSF_fft
             conv_im = jnp.fft.irfft2(conv_fft, s= self.im_shape)
-            return jnp.abs(conv_im)
+            return conv_im
         self.conv = jit(conv)
 
         #Set up and jit intrinsic Sersic rendering with Oversampling
@@ -477,7 +477,7 @@ class FourierRenderer(BaseRenderer):
 
         #Jit compile function to inv fft image
         def conv_and_inv_FFT(F_im):
-            im = jnp.abs( jnp.fft.irfft2(F_im*self.PSF_fft, s= self.im_shape) )
+            im = jnp.fft.irfft2(F_im*self.PSF_fft, s= self.im_shape) 
             return im
         self.conv_and_inv_FFT = jit(conv_and_inv_FFT)
 
@@ -698,7 +698,7 @@ class HybridRenderer(BaseRenderer):
         self.render_sersic_hyrbid = jax.jit(render_sersic_hybrid)
 
         def conv_and_inv_FFT(F_im):
-            im = jnp.abs( jnp.fft.irfft2(F_im*self.PSF_fft, s= self.im_shape) )
+            im = jnp.fft.irfft2(F_im*self.PSF_fft, s= self.im_shape) 
             return im
         self.conv_and_inv_FFT = jit(conv_and_inv_FFT)
 

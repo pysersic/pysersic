@@ -56,7 +56,7 @@ class BasePrior(ABC):
                             )
             self.reparam_dict['sky_back'] = infer.reparam.TransformReparam()
             self.sample_sky = self.sample_sky_flat
-
+            
         elif self.sky_type == 'tilted-plane':
             self._set_dist('sky_back',dist.TransformedDistribution(
                                 dist.Normal(),
@@ -538,25 +538,32 @@ def generate_sersic_prior(image: jax.numpy.array,
 
     if flux_guess is None:
         flux_guess = cat.segment_flux
-    prior.set_gaussian_prior('flux',flux_guess,2*jnp.sqrt(flux_guess))
+        if flux_guess > 0:
+            flux_guess_err = 2*jnp.sqrt( flux_guess )
+        else:
+            flux_guess_err = jnp.sqrt(jnp.abs(flux_guess))
+            flux_guess = 0.
+    else:
+        flux_guess_err = 2*jnp.sqrt(flux_guess)
+    prior.set_gaussian_prior('flux',flux_guess,flux_guess_err)
     
 
     
     if r_eff_guess is None:
-        r_eff_guess = (cat.semimajor_sigma/2).value
+        r_eff_guess = cat.kron_radius.value
     
     r_loc = r_eff_guess
     r_scale = jnp.sqrt(r_eff_guess) 
     prior.set_truncated_gaussian_prior('r_eff', r_loc,r_scale, low = 0.5)
 
-    prior.set_uniform_prior('ellip', 0,0.9)
+    prior.set_uniform_prior('ellip', 0, 0.9)
     theta_guess = cat.orientation.to(u.rad).value
 
     if np.isnan(theta_guess):
         theta_guess = 0
 
     prior.set_custom_prior('theta', dist.VonMises(loc = theta_guess,concentration=2), reparam= infer.reparam.CircularReparam() )
-    prior.set_truncated_gaussian_prior('n',2,1, low = 0.5,high = 8)
+    prior.set_uniform_prior('n', 0.5, 8)
 
     if position_guess is None:
         xc_guess = cat.centroid_win[0]
