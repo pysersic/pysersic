@@ -7,6 +7,7 @@ import numpy as np
 import corner
 import jax.numpy as jnp
 import arviz as az 
+from pysersic.priors import PySersicMultiPrior
 ArrayLike = Union[np.array, jax.numpy.array]
 ListLike = Union[np.array,jax.numpy.array,list]
 from pysersic.rendering import (
@@ -14,7 +15,8 @@ from pysersic.rendering import (
 )
 import asdf 
 import pandas as pd 
-import xarray 
+import xarray
+import copy
 
 class PySersicResults():
     def __init__(self,
@@ -48,8 +50,6 @@ class PySersicResults():
         self.mask = mask 
         self.loss_func = loss_func 
         self.renderer = renderer
-
-
 
 
     def __repr__(self)->str:
@@ -227,8 +227,7 @@ class PySersicResults():
         Union[pd.DataFrame,dict]
             dict or dataframe with index/keys as parameters and columns/values as the chosen quantiles.
         """
-        r = self.idata
-        xx = r.posterior.quantile(quantiles).to_dict()
+        xx = self.idata.posterior.quantile(quantiles).to_dict()
         out = {} 
         for i in xx['data_vars'].keys():
             out[i] = xx['data_vars'][i]['data']
@@ -342,12 +341,11 @@ class PySersicResults():
         tree['input_data']['mask'] = np.array(self.mask)
         tree['loss_func'] = str(self.loss_func)
         tree['renderer'] = str(self.renderer)
-        tree['contains_SVI_result'] =  self.runtype == 'svi'
-        tree['contains_sampling_result'] =  self.runtype=='sampling'
+        tree['method_used'] = self.runtype
         if self.runtype == 'svi':
             tree['svi_method_used'] = self.svi_method_used
         tree['prior_info'] = self.prior.__str__()
-        tree['best_model'] = np.array(self.render_best_fit_model())
+        tree['best_model'] = np.array(self.get_median_model())
         tree['posterior'] = self.idata.to_dict()['posterior']
         for i in tree['posterior']:
             i = np.array(i)
@@ -355,3 +353,49 @@ class PySersicResults():
         if not fname.endswith('.asdf'):
             fname+='.asdf'
         af.write_to(fname)
+
+
+def parse_multi_results(results: PySersicResults, source_num: int) -> PySersicResults:
+    """Function written to parse results from a FitMulti instance to isolate a single source. A new PySersicResults class is created with only the posteriors of the specified source. The original chains saved under `.idata_all`
+
+    Parameters
+    ----------
+    results : PySersicResults
+        Results class from a FitMulti instance
+    source_num : int 
+        Source number to isolate or if equal to -1 will reset to the joint posterior of all sources
+
+    Returns
+    -------
+    PySersicResults
+        Results class with all the meta-data the same but the specified source isolated. The original posterior is saved under `.idata_all`    
+    """
+    new_res = copy.copy(results)
+
+    assert type(results.prior) == PySersicMultiPrior , "Results must be from a FitMulti instance"
+    
+    if source_num == -1:
+        if not hasattr(new_res, 'idata_all'):
+            raise UserWarning("No need to resest posterior, returning original")
+        else:
+            idata_all = copy.copy(new_res.idata_all)
+            new_res.__setattr__('idata', idata_all)
+            new_res.__delattr__('idata_all')
+    else:
+        param_names = new_res.prior.all_priors[source_num].param_names
+        source_names = [pname + f'_{source_num}' for pname in param_names]
+
+        if hasattr(new_res, 'idata_all'):
+            idata = new_res.idata_all
+        else:
+            idata = new_res.idata
+            new_res.__setattr__('idata_all', idata)
+
+        
+        post_source = az.extract(idata, var_names = source_names , combined = False)
+        idata_source = az.InferenceData(posterior = post_source)
+        idata_source.rename_vars(dict(zip(source_names,param_names)), inplace = True)
+
+        new_res.__delattr__('idata')
+        new_res.__setattr__('idata', idata_source)
+    return new_res
