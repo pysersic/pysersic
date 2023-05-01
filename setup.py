@@ -13,7 +13,7 @@ setuptools.setup(
         'pandas',
         'astropy',
         'corner',
-        'photutils>=0.16'
+        'photutils>=0.16',
         'jax',
         'numpyro',
         'arviz',
