@@ -661,8 +661,8 @@ class SourceProperties():
         self.set_sky_guess(**kwargs)
         return self
     
-    def set_sky_guess(self,sky_guess=None,sky_rms=None):
-        edge_pixels = np.concatenate((self.image[:5,:],self.image[-5:,:],self.image[:,:5],self.image[:,-5:]))
+    def set_sky_guess(self,sky_guess=None,sky_rms=None,n_pix_sample=5):
+        edge_pixels = np.concatenate((self.image[:n_pix_sample,:],self.image[-n_pix_sample:,:],self.image[:,:n_pix_sample],self.image[:,-n_pix_sample:]),axis=None)
         median_val = np.median(edge_pixels)
         if sky_guess is None:
             self.sky_guess = median_val
