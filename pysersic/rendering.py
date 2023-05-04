@@ -215,12 +215,11 @@ class PixelRenderer(BaseRenderer):
     """
     Render class based on rendering in pixel space and then convolving with the PSF
     """
-    #Basic implementation of Sersic renderering without any oversampling
     def __init__(self, 
             im_shape: Iterable, 
             pixel_PSF: jax.numpy.array,
-            os_pixel_size: Optional[int]= 10, 
-            num_os: Optional[int] = 8) -> None:
+            os_pixel_size: Optional[int]= 6, 
+            num_os: Optional[int] = 12) -> None:
         """Initialize the PixelRenderer class
 
         Parameters
@@ -438,9 +437,9 @@ class FourierRenderer(BaseRenderer):
     def __init__(self, 
             im_shape: Iterable, 
             pixel_PSF: jax.numpy.array,
-            frac_start: Optional[float] = 0.02,
+            frac_start: Optional[float] = 1e-2,
             frac_end: Optional[float] = 15., 
-            n_sigma: Optional[int] = 13, 
+            n_sigma: Optional[int] = 15, 
             percision: Optional[int] = 10)-> None:
         """Initialize a Fourier renderer class
 
@@ -641,9 +640,9 @@ class HybridRenderer(BaseRenderer):
     def __init__(self, 
             im_shape: Iterable, 
             pixel_PSF: jax.numpy.array,
-            frac_start: Optional[float] = 0.02,
+            frac_start: Optional[float] = 1e-2,
             frac_end: Optional[float] = 15., 
-            n_sigma: Optional[int] = 13, 
+            n_sigma: Optional[int] = 15, 
             num_pixel_render: Optional[int] = 3,
             percision: Optional[int] = 10)-> None:
         """Initialize a  HyrbridRenderer class
@@ -671,8 +670,8 @@ class HybridRenderer(BaseRenderer):
         self.n_sigma = n_sigma
         self.percision = percision
         self.num_pixel_render = num_pixel_render
-        self.w_real = jnp.arange(self.n_sigma - self.num_pixel_render, self.n_sigma)
-        self.w_fourier = jnp.arange(self.n_sigma - self.num_pixel_render)
+        self.w_real = jnp.arange(self.n_sigma - self.num_pixel_render, self.n_sigma, dtype=jnp.int32)
+        self.w_fourier = jnp.arange(self.n_sigma - self.num_pixel_render, dtype=jnp.int32)
 
         psf_X,psf_Y = jnp.meshgrid(jnp.arange(self.psf_shape[0]),jnp.arange(self.psf_shape[1]))
         sig_x = jnp.sqrt( (self.pixel_PSF*(psf_X)**2).sum()/self.pixel_PSF.sum() - psf_X.mean()**2 )

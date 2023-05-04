@@ -376,7 +376,7 @@ def parse_multi_results(results: PySersicResults, source_num: int) -> PySersicRe
     
     if source_num == -1:
         if not hasattr(new_res, 'idata_all'):
-            raise UserWarning("No need to resest posterior, returning original")
+           print("No need to resest posterior, returning original")
         else:
             idata_all = copy.copy(new_res.idata_all)
             new_res.__setattr__('idata', idata_all)
