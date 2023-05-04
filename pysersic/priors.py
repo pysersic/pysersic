@@ -679,6 +679,7 @@ class SourceProperties():
             self.sky_guess = median_val
         if sky_rms is None:
             self.sky_rms = np.std(edge_pixels)
+        return self
 
     def set_flux_guess(self,flux_guess=None,flux_guess_err = None,**kwargs):
         if flux_guess is None:
