@@ -461,7 +461,7 @@ class PySersicMultiPrior(BasePrior):
             all_params.append(prior_cur())
         return all_params
 
-def autoprior(image: jax.numpy.array,
+def autoprior(image_properties,
             profile_type: str,
             mask: Optional[jax.numpy.array] = None,
             sky_type: Optional[str] = 'none')-> PySersicSourcePrior:
@@ -480,21 +480,20 @@ def autoprior(image: jax.numpy.array,
     dict
         Dictionary containing numpyro Distribution objects for each parameter
     """
-    image_properties = ImageProperties(image,mask=mask)
     if profile_type == 'sersic':
-        prior_dict = generate_sersic_prior(image, sky_type = sky_type,mask=mask)
+        prior_dict = generate_sersic_prior(image_properties, sky_type = sky_type,mask=mask)
     
     elif profile_type == 'doublesersic':
-        prior_dict = generate_doublesersic_prior(image, sky_type = sky_type,mask=mask)
+        prior_dict = generate_doublesersic_prior(image_properties, sky_type = sky_type,mask=mask)
 
     elif profile_type == 'pointsource':
-        prior_dict = generate_pointsource_prior(image, sky_type = sky_type,mask=mask)
+        prior_dict = generate_pointsource_prior(image_properties, sky_type = sky_type,mask=mask)
    
     elif profile_type in 'exp':
-        prior_dict = generate_exp_prior(image, sky_type = sky_type,mask=mask)
+        prior_dict = generate_exp_prior(image_properties, sky_type = sky_type,mask=mask)
 
     elif profile_type in 'dev':
-        prior_dict = generate_dev_prior(image, sky_type = sky_type,mask=mask)
+        prior_dict = generate_dev_prior(image_properties, sky_type = sky_type,mask=mask)
     
     return prior_dict
 
