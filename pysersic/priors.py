@@ -46,8 +46,13 @@ class BasePrior(ABC):
         self.sky_type = sky_type
         if sky_guess is None:
             self.sky_guess = 0.0 
+        else:
+            self.sky_guess = sky_guess
         if sky_rms is None:
             self.sky_rms = 1e-3
+        else:
+            self.sky_rms = sky_rms
+
         if self.sky_type not in base_sky_types:
             raise AssertionError("Sky type must be one of: ", base_sky_types)
         elif self.sky_type == 'none':
@@ -726,19 +731,19 @@ class SourceProperties():
             Dictionary containing numpyro Distribution objects for each parameter
         """
         if profile_type == 'sersic':
-            prior_dict = generate_sersic_prior(self, sky_type = sky_type,sky_guess=self.sky_guess,sky_rms=self.sky_rms)
+            prior_dict = generate_sersic_prior(self, sky_type = sky_type,)
         
         elif profile_type == 'doublesersic':
-            prior_dict = generate_doublesersic_prior(self, sky_type = sky_type,sky_guess=self.sky_guess,sky_rms=self.sky_rms)
+            prior_dict = generate_doublesersic_prior(self, sky_type = sky_type,)
 
         elif profile_type == 'pointsource':
-            prior_dict = generate_pointsource_prior(self, sky_type = sky_type,sky_guess=self.sky_guess,sky_rms=self.sky_rms)
+            prior_dict = generate_pointsource_prior(self, sky_type = sky_type,)
 
         elif profile_type in 'exp':
-            prior_dict = generate_exp_prior(self, sky_type = sky_type,sky_guess=self.sky_guess,sky_rms=self.sky_rms)
+            prior_dict = generate_exp_prior(self, sky_type = sky_type,)
 
         elif profile_type in 'dev':
-            prior_dict = generate_dev_prior(self, sky_type = sky_type,sky_guess=self.sky_guess,sky_rms=self.sky_rms)
+            prior_dict = generate_dev_prior(self, sky_type = sky_type,)
         
         return prior_dict
     
