@@ -34,7 +34,7 @@ class BasePrior(ABC):
     """
     Base class for priors with sky sampling included
     """
-    def __init__(self, sky_type = 'none') -> None:
+    def __init__(self, sky_type = 'none',sky_guess=None,sky_rms=None) -> None:
         """Initialize a base prior class
 
         Parameters
@@ -44,15 +44,20 @@ class BasePrior(ABC):
         """
         self.reparam_dict = {}
         self.sky_type = sky_type
+        if sky_guess is None:
+            self.sky_guess = 0.0 
+        if sky_rms is None:
+            self.sky_rms = 1e-3
         if self.sky_type not in base_sky_types:
             raise AssertionError("Sky type must be one of: ", base_sky_types)
         elif self.sky_type == 'none':
             self.sample_sky = self.sample_sky_none
     
         elif self.sky_type == 'flat':
+            
             self._set_dist('sky_back',dist.TransformedDistribution(
                                 dist.Normal(),
-                                dist.transforms.AffineTransform(0.0,1e-3),)
+                                dist.transforms.AffineTransform(sky_guess,sky_rms),)
                             )
             self.reparam_dict['sky_back'] = infer.reparam.TransformReparam()
             self.sample_sky = self.sample_sky_flat
@@ -60,16 +65,16 @@ class BasePrior(ABC):
         elif self.sky_type == 'tilted-plane':
             self._set_dist('sky_back',dist.TransformedDistribution(
                                 dist.Normal(),
-                                dist.transforms.AffineTransform(0.0,1e-3),)
+                                dist.transforms.AffineTransform(sky_guess,sky_rms),)
                             )
             self._set_dist('sky_x_sl',  dist.TransformedDistribution(
                                 dist.Normal(),
-                                dist.transforms.AffineTransform(0.0,1e-4),)
+                                dist.transforms.AffineTransform(0.0,0.1*sky_rms),)
             )
 
             self._set_dist('sky_y_sl',dist.TransformedDistribution(
                                 dist.Normal(),
-                                dist.transforms.AffineTransform(0.0,1e-4),)
+                                dist.transforms.AffineTransform(0.0,0.1*sky_rms),)
             )
             
             self.reparam_dict['sky_back'] = infer.reparam.TransformReparam()
@@ -675,10 +680,16 @@ class SourceProperties():
         self.set_r_eff_guess(**kwargs)
         self.set_theta_guess(**kwargs)
         self.set_position_guess(**kwargs)
+        self.set_sky_guess(**kwargs)
         return self
     
-    def set_sky_guess(self,sky_guess=None):
-        edge_pixels = np.concatenate([self.image[:5,:]])
+    def set_sky_guess(self,sky_guess=None,sky_rms=None):
+        edge_pixels = np.concatenate((self.image[:5,:],self.image[-5:,:],self.image[:,:5],self.image[:,-5:]))
+        median_val = np.median(edge_pixels)
+        if sky_guess is None:
+            self.sky_guess = median_val
+        if sky_rms is None:
+            self.sky_rms = np.std(edge_pixels)
 
     def set_flux_guess(self,flux_guess=None,flux_guess_err = None,**kwargs):
         if flux_guess is None:
