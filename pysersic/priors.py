@@ -481,19 +481,19 @@ def autoprior(image_properties,
         Dictionary containing numpyro Distribution objects for each parameter
     """
     if profile_type == 'sersic':
-        prior_dict = generate_sersic_prior(image_properties, sky_type = sky_type,mask=mask)
+        prior_dict = generate_sersic_prior(image_properties, sky_type = sky_type)
     
     elif profile_type == 'doublesersic':
-        prior_dict = generate_doublesersic_prior(image_properties, sky_type = sky_type,mask=mask)
+        prior_dict = generate_doublesersic_prior(image_properties, sky_type = sky_type)
 
     elif profile_type == 'pointsource':
-        prior_dict = generate_pointsource_prior(image_properties, sky_type = sky_type,mask=mask)
+        prior_dict = generate_pointsource_prior(image_properties, sky_type = sky_type)
 
     elif profile_type in 'exp':
-        prior_dict = generate_exp_prior(image_properties, sky_type = sky_type,mask=mask)
+        prior_dict = generate_exp_prior(image_properties, sky_type = sky_type)
 
     elif profile_type in 'dev':
-        prior_dict = generate_dev_prior(image_properties, sky_type = sky_type,mask=mask)
+        prior_dict = generate_dev_prior(image_properties, sky_type = sky_type)
     
     return prior_dict
 
@@ -519,7 +519,7 @@ def generate_sersic_prior(image_properties,
     """
     prior = PySersicSourcePrior('sersic', sky_type= sky_type, suffix=suffix)
     prior.set_gaussian_prior('flux',image_properties.flux_guess,image_properties.flux_guess_err)
-    prior.set_truncated_gaussian_prior('r_eff', image_properties.r_loc,image_properties.r_scale, low = 0.5)
+    prior.set_truncated_gaussian_prior('r_eff', image_properties.r_eff_guess,image_properties.r_scale, low = 0.5)
     prior.set_uniform_prior('ellip', 0, 0.9)
     prior.set_custom_prior('theta', dist.VonMises(loc = image_properties.theta_guess,concentration=2), reparam= infer.reparam.CircularReparam() )
     prior.set_uniform_prior('n', 0.5, 8)
@@ -549,7 +549,7 @@ def generate_exp_prior(image_properties,
     
     prior = PySersicSourcePrior('exp', sky_type= sky_type, suffix=suffix)
     prior.set_gaussian_prior('flux',image_properties.flux_guess,image_properties.flux_guess_err)
-    prior.set_truncated_gaussian_prior('r_eff', image_properties.r_loc,image_properties.r_scale, low = 0.5)
+    prior.set_truncated_gaussian_prior('r_eff', image_properties.r_eff_guess,image_properties.r_scale, low = 0.5)
     prior.set_uniform_prior('ellip', 0,0.9)
     prior.set_custom_prior('theta', dist.VonMises(loc = image_properties.theta_guess,concentration=2), reparam= infer.reparam.CircularReparam() )
     prior.set_gaussian_prior('xc', image_properties.xc_guess, 1)
@@ -578,7 +578,7 @@ def generate_dev_prior(image_properties,
     
     prior = PySersicSourcePrior('dev', sky_type= sky_type, suffix=suffix)
     prior.set_gaussian_prior('flux',image_properties.flux_guess,image_properties.flux_guess_err)
-    prior.set_truncated_gaussian_prior('r_eff', image_properties.r_loc,image_properties.r_scale, low = 0.5)
+    prior.set_truncated_gaussian_prior('r_eff', image_properties.r_eff_guess,image_properties.r_scale, low = 0.5)
     prior.set_uniform_prior('ellip', 0,0.9)
     prior.set_custom_prior('theta', dist.VonMises(loc = image_properties.theta_guess,concentration=2), reparam= infer.reparam.CircularReparam() )
     prior.set_gaussian_prior('xc', image_properties.xc_guess, 1)
@@ -684,44 +684,43 @@ class ImageProperties():
         
         fig, ax = plt.subplots(figsize=figsize,)
         if self.mask is not None:
-            image= jnp.ma.masked_array(self.image,mask=self.mask)
+            image= np.ma.masked_array(self.image,mask=self.mask)
         else:
             image = self.image
-        vmin = jnp.mean(image) - scale*jnp.std(image)
-        vmax = jnp.mean(image) + scale*jnp.std(image)
+        vmin = np.mean(image) - scale*np.std(image)
+        vmax = np.mean(image) + scale*np.std(image)
         ax.imshow(image,cmap=cmap,origin='lower',vmin=vmin,vmax=vmax)
         ax.plot(self.xc_guess,self.yc_guess,'x',color='r')
-        dx = 2*self.r_eff_guess*jnp.cos(self.theta_guess)
-        dx = 2*self.r_eff_guess*jnp.sin(self.theta_guess)
-        ax.arrow(self.xc_guess,self.yc_guess,dx=dx,dy=dy)
-        arr = jnp.linspace(0,2*jnp.pi,100)
-        x = jnp.cos(arr) * self.r_eff_guess
-        y = jnp.sin(arr) * self.r_eff_guess
+        
+        dx = 10*self.r_eff_guess*np.cos(self.theta_guess+np.pi/2.)
+        dy = 10*self.r_eff_guess*np.sin(self.theta_guess+np.pi/2.)
+        ax.arrow(self.xc_guess,self.yc_guess,dx=dx,dy=dy,width=0.1,head_width=1)
+        arr = np.linspace(0,2*np.pi,100)
+        x = np.cos(arr) * self.r_eff_guess + self.xc_guess 
+        y = np.sin(arr) * self.r_eff_guess + self.yc_guess 
         ax.plot(x,y,'r',lw=2)
         plt.show() 
 
 
         
 
-    def set_properties(self,**kwargs):
-        self.set_flux_guess(self,**kwargs)
-        self.set_r_eff_guess(self,**kwargs)
-        self.set_theta_guess(self,**kwargs)
-        self.set_position_guess(self,**kwargs)
+    def measure_properties(self,**kwargs):
+        self.set_flux_guess(**kwargs)
+        self.set_r_eff_guess(**kwargs)
+        self.set_theta_guess(**kwargs)
+        self.set_position_guess(**kwargs)
 
     def set_flux_guess(self,flux_guess=None,flux_guess_err = None,**kwargs):
         if flux_guess is None:
             flux_guess = self.cat.segment_flux
-            if flux_guess_err is not None:
-                flux_guess_err = flux_guess_err
-            else:
-                if flux_guess > 0:
-                    flux_guess_err = 2*jnp.sqrt( flux_guess )
-                else:
-                    flux_guess_err = jnp.sqrt(jnp.abs(flux_guess))
-                    flux_guess = 0.
+        if flux_guess_err is not None:
+            flux_guess_err = flux_guess_err
         else:
-            flux_guess_err = 2*jnp.sqrt(flux_guess)
+            if flux_guess > 0:
+                flux_guess_err = 2*jnp.sqrt( flux_guess )
+            else:
+                flux_guess_err = jnp.sqrt(jnp.abs(flux_guess))
+                flux_guess = 0.
         
         self.flux_guess = flux_guess 
         self.flux_guess_err = flux_guess_err
