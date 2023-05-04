@@ -424,6 +424,10 @@ class PySersicMultiPrior(BasePrior):
             properties.set_flux_guess(catalog['flux'][ind])
             properties.set_r_eff_guess(r_eff_guess = catalog['r'][ind])
             properties.set_position_guess((catalog['x'][ind],catalog['y'][ind]) )
+            try:
+                properties.set_theta_guess(catalog['theta'][ind])
+            except:
+                pass 
 
             if catalog['type'][ind] == 'sersic':
                 prior = generate_sersic_prior(properties,suffix = f'_{ind:d}')
@@ -672,6 +676,10 @@ class SourceProperties():
         self.set_theta_guess(**kwargs)
         self.set_position_guess(**kwargs)
         return self
+    
+    def set_sky_guess(self,sky_guess=None):
+        edge_pixels = np.concatenate([self.image[:5,:]])
+
     def set_flux_guess(self,flux_guess=None,flux_guess_err = None,**kwargs):
         if flux_guess is None:
             flux_guess = self.cat.segment_flux
