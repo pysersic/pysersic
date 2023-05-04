@@ -657,6 +657,7 @@ class SourceProperties():
             self.cat = data_properties(self.image,mask=self.mask.astype(bool))
         else:
             self.cat = data_properties(self.image)
+        _ = self.measure_properties() 
 
     def measure_properties(self,**kwargs):
         self.set_flux_guess(**kwargs)
