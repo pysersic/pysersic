@@ -9,7 +9,7 @@ from abc import ABC
 from .utils.utils import render_tilted_plane_sky
 from photutils.morphology import data_properties
 import astropy.units as u
-
+import matplotlib.pyplot as plt 
 
 base_sky_types = ['none','flat','tilted-plane']
 base_sky_params = dict(
@@ -488,7 +488,7 @@ def autoprior(image_properties,
 
     elif profile_type == 'pointsource':
         prior_dict = generate_pointsource_prior(image_properties, sky_type = sky_type,mask=mask)
-   
+
     elif profile_type in 'exp':
         prior_dict = generate_exp_prior(image_properties, sky_type = sky_type,mask=mask)
 
@@ -672,10 +672,40 @@ class ImageProperties():
         else:
             self.cat = data_properties(self.image)
     
+    def visualize(self,figsize=(6,6),cmap='gray',scale=1):
+        if not hasattr(self,'flux_guess'):
+            self.set_flux_guess() 
+        if not hasattr(self,'r_eff_guess'):
+            self.set_r_eff_guess()
+        if not hasattr(self,'theta_guess'):
+            self.set_theta_guess() 
+        if not hasattr(self,'xc_guess'):
+            self.set_position_guess()
+        
+        fig, ax = plt.subplots(figsize=figsize,)
+        if self.mask is not None:
+            image= jnp.ma.masked_array(self.image,mask=self.mask)
+        else:
+            image = self.image
+        vmin = jnp.mean(image) - scale*jnp.std(image)
+        vmax = jnp.mean(image) + scale*jnp.std(image)
+        ax.imshow(image,cmap=cmap,origin='lower',vmin=vmin,vmax=vmax)
+        ax.plot(self.xc_guess,self.yc_guess,'x',color='r')
+        dx = 2*self.r_eff_guess*jnp.cos(self.theta_guess)
+        dx = 2*self.r_eff_guess*jnp.sin(self.theta_guess)
+        ax.arrow(self.xc_guess,self.yc_guess,dx=dx,dy=dy)
+        arr = jnp.linspace(0,2*jnp.pi,100)
+        x = jnp.cos(arr) * self.r_eff_guess
+        y = jnp.sin(arr) * self.r_eff_guess
+        ax.plot(x,y,'r',lw=2)
+        plt.show() 
+
+
+        
 
     def set_properties(self,**kwargs):
         self.set_flux_guess(self,**kwargs)
-        self.set_re_guess(self,**kwargs)
+        self.set_r_eff_guess(self,**kwargs)
         self.set_theta_guess(self,**kwargs)
         self.set_position_guess(self,**kwargs)
 
@@ -696,7 +726,7 @@ class ImageProperties():
         self.flux_guess = flux_guess 
         self.flux_guess_err = flux_guess_err
     
-    def set_re_guess(self,r_eff_guess=None,**kwargs):
+    def set_r_eff_guess(self,r_eff_guess=None,**kwargs):
         if r_eff_guess is None:
             r_eff_guess = self.cat.kron_radius.value
     
