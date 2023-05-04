@@ -34,7 +34,7 @@ class BasePrior(ABC):
     """
     Base class for priors with sky sampling included
     """
-    def __init__(self, sky_type = 'none',sky_guess=None,sky_rms=None) -> None:
+    def __init__(self, sky_type = 'none',sky_guess=None,sky_guess_err=None) -> None:
         """Initialize a base prior class
 
         Parameters
@@ -48,10 +48,10 @@ class BasePrior(ABC):
             self.sky_guess = 0.0 
         else:
             self.sky_guess = sky_guess
-        if sky_rms is None:
-            self.sky_rms = 1e-3
+        if sky_guess_err is None:
+            self.sky_guess_err = 1e-3
         else:
-            self.sky_rms = sky_rms
+            self.sky_guess_err = sky_guess_err
 
         if self.sky_type not in base_sky_types:
             raise AssertionError("Sky type must be one of: ", base_sky_types)
@@ -62,7 +62,7 @@ class BasePrior(ABC):
             
             self._set_dist('sky_back',dist.TransformedDistribution(
                                 dist.Normal(),
-                                dist.transforms.AffineTransform(sky_guess,sky_rms),)
+                                dist.transforms.AffineTransform(sky_guess,sky_guess_err),)
                             )
             self.reparam_dict['sky_back'] = infer.reparam.TransformReparam()
             self.sample_sky = self.sample_sky_flat
@@ -70,16 +70,16 @@ class BasePrior(ABC):
         elif self.sky_type == 'tilted-plane':
             self._set_dist('sky_back',dist.TransformedDistribution(
                                 dist.Normal(),
-                                dist.transforms.AffineTransform(sky_guess,sky_rms),)
+                                dist.transforms.AffineTransform(sky_guess,sky_guess_err),)
                             )
             self._set_dist('sky_x_sl',  dist.TransformedDistribution(
                                 dist.Normal(),
-                                dist.transforms.AffineTransform(0.0,0.1*sky_rms),)
+                                dist.transforms.AffineTransform(0.0,0.1*sky_guess_err),)
             )
 
             self._set_dist('sky_y_sl',dist.TransformedDistribution(
                                 dist.Normal(),
-                                dist.transforms.AffineTransform(0.0,0.1*sky_rms),)
+                                dist.transforms.AffineTransform(0.0,0.1*sky_guess_err),)
             )
             
             self.reparam_dict['sky_back'] = infer.reparam.TransformReparam()
@@ -181,7 +181,7 @@ class PySersicSourcePrior(BasePrior):
                 profile_type: str, 
                 sky_type: Optional[str] = 'none',
                 sky_guess: Optional[float]=None,
-                sky_rms: Optional[float] = None,
+                sky_guess_err: Optional[float] = None,
                 suffix: Optional[str] =  "") -> None:
         """Initialize PySersicSourcePrior class
 
@@ -194,7 +194,7 @@ class PySersicSourcePrior(BasePrior):
         suffix : Optional[str], optional
             Additional suffix to add to each variable name, used in PySersicMultiPrior, by default ""
         """
-        super().__init__(sky_type= sky_type,sky_guess=sky_guess,sky_rms=sky_rms)
+        super().__init__(sky_type= sky_type,sky_guess=sky_guess,sky_guess_err=sky_guess_err)
         assert profile_type in base_profile_types
         self.profile_type = profile_type
         self.param_names = base_profile_params[self.profile_type]
@@ -202,15 +202,19 @@ class PySersicSourcePrior(BasePrior):
         self.built = False
         self.suffix = suffix
 
-    def __repr__(self) -> str:
+    def __repr__(self, print_sky = True) -> str:
         out = f"Prior for a {self.profile_type} source:"
         num_dash = len(out)
         out += "\n" + "-"*num_dash + "\n"
         for (var, descrip) in self.repr_dict.items():
             out += var + " ---  " + descrip + "\n"    
-        out+= f'sky mode: {self.sky_type}\n'
-        out+=f'sky level: {self.sky_guess}\n'
-        out+=f'sky rms: {self.sky_rms}\n'
+        if print_sky: # This is not as dynamic as the parameter ones so will not update once set
+            out+= f'\nSky Type: {self.sky_type}\n'
+            if not self.sky_type == 'none':
+                out+=f'Sky level --- Normal w/ mu = {self.sky_guess:.1e}, sigma = {self.sky_guess_err:.1e}\n'
+                if self.sky_type == 'tilted-plane':
+                    out+=f'Sky x slope --- Normal w/ mu = {0}, sigma = {self.sky_guess_err*0.1:.1e}\n'
+                    out+=f'Sky y slope --- Normal w/ mu = {0}, sigma = {self.sky_guess_err*0.1:.1e}\n'
         return out
     
     def _build_dist_list(self)-> None:
@@ -417,7 +421,7 @@ class PySersicMultiPrior(BasePrior):
             catalog: Union[pandas.DataFrame,dict, np.recarray],
             sky_type: Optional[str] = 'none', 
             sky_guess: Optional[float] = None,
-            sky_rms: Optional[float] = None    
+            sky_guess_err: Optional[float] = None    
             )-> None:
         """
         Ingest a catalog-like data structure containing prior positions and parameters for multiple sources in a single image. The format of the catalog can be a `pandas.DataFrame`, `numpy` RecordArray, dictionary, or any other format so-long as the following fields exist and can be directly indexed: 'x', 'y', 'flux', 'r' and 'type'
@@ -433,12 +437,14 @@ class PySersicMultiPrior(BasePrior):
         prior_list : Iterable
             List containing a prior dictionary for each source
         """
+        if sky_type != 'none':
+            assert sky_guess is not None and sky_guess_err is not None, "If using a sky model must provide initial guess and uncertainty"
 
-        super().__init__(sky_type = sky_type,sky_guess=sky_guess,sky_rms=sky_rms)
+        super().__init__(sky_type = sky_type,sky_guess=sky_guess,sky_guess_err=sky_guess_err)
         self.catalog = catalog
         self.all_priors = []
         self.N_sources = len(catalog['x'])
-        image = jnp.ones((100,100)) # dummy image
+        image = jnp.zeros((100,100)) # dummy image
         for ind in range(len(catalog['x'])):
             properties = SourceProperties(image)
             properties.set_flux_guess(catalog['flux'][ind])
@@ -470,7 +476,13 @@ class PySersicMultiPrior(BasePrior):
     def __repr__(self,)-> str:
         out = f"PySersicMultiPrior containing {len(self.all_priors):d} sources \n"
         for i, source_prior in enumerate(self.all_priors):
-            out += f"\nSource {i:d} : " + source_prior.__repr__()
+            out += f"\nSource {i:d} : " + source_prior.__repr__(print_sky = False)
+        out+= f'\nSky Type: {self.sky_type}\n'
+        if not self.sky_type == 'none':
+            out+=f'Sky level --- Normal w/ mu = {self.sky_guess:.1e}, sigma = {self.sky_guess_err:.1e}\n'
+            if self.sky_type == 'tilted-plane':
+                out+=f'Sky x slope --- Normal w/ mu = {0}, sigma = {self.sky_guess_err*0.1:.1e}\n'
+                out+=f'Sky y slope --- Normal w/ mu = {0}, sigma = {self.sky_guess_err*0.1:.1e}\n'
         return out
     
     def __call__(self) -> list:
@@ -506,7 +518,7 @@ def generate_sersic_prior(image_properties,
         Dictionary containing numpyro Distribution objects for each parameter
 
     """
-    prior = PySersicSourcePrior('sersic', sky_type= sky_type,sky_guess=image_properties.sky_guess,sky_rms=image_properties.sky_rms, suffix=suffix)
+    prior = PySersicSourcePrior('sersic', sky_type= sky_type,sky_guess=image_properties.sky_guess,sky_guess_err=image_properties.sky_guess_err, suffix=suffix)
     prior.set_gaussian_prior('flux',image_properties.flux_guess,image_properties.flux_guess_err)
     prior.set_truncated_gaussian_prior('r_eff', image_properties.r_eff_guess,image_properties.r_scale, low = 0.5)
     prior.set_uniform_prior('ellip', 0, 0.9)
@@ -536,7 +548,7 @@ def generate_exp_prior(image_properties,
 
     """
     
-    prior = PySersicSourcePrior('exp', sky_type= sky_type,sky_guess=image_properties.sky_guess,sky_rms=image_properties.sky_rms, suffix=suffix)
+    prior = PySersicSourcePrior('exp', sky_type= sky_type,sky_guess=image_properties.sky_guess,sky_guess_err=image_properties.sky_guess_err, suffix=suffix)
     prior.set_gaussian_prior('flux',image_properties.flux_guess,image_properties.flux_guess_err)
     prior.set_truncated_gaussian_prior('r_eff', image_properties.r_eff_guess,image_properties.r_scale, low = 0.5)
     prior.set_uniform_prior('ellip', 0,0.9)
@@ -565,7 +577,7 @@ def generate_dev_prior(image_properties,
 
     """
     
-    prior = PySersicSourcePrior('dev', sky_type= sky_type,sky_guess=image_properties.sky_guess,sky_rms=image_properties.sky_rms, suffix=suffix)
+    prior = PySersicSourcePrior('dev', sky_type= sky_type,sky_guess=image_properties.sky_guess,sky_guess_err=image_properties.sky_guess_err, suffix=suffix)
     prior.set_gaussian_prior('flux',image_properties.flux_guess,image_properties.flux_guess_err)
     prior.set_truncated_gaussian_prior('r_eff', image_properties.r_eff_guess,image_properties.r_scale, low = 0.5)
     prior.set_uniform_prior('ellip', 0,0.9)
@@ -594,7 +606,7 @@ def generate_doublesersic_prior(image_properties,
 
     """
 
-    prior = PySersicSourcePrior('doublesersic', sky_type= sky_type,sky_guess=image_properties.sky_guess,sky_rms=image_properties.sky_rms, suffix=suffix)
+    prior = PySersicSourcePrior('doublesersic', sky_type= sky_type,sky_guess=image_properties.sky_guess,sky_guess_err=image_properties.sky_guess_err, suffix=suffix)
     prior.set_gaussian_prior('flux',image_properties.flux_guess,image_properties.flux_guess_err)
     prior.set_uniform_prior('f_1', 0.,1.)
 
@@ -640,7 +652,7 @@ def generate_pointsource_prior(image_properties,
 
     """
 
-    prior = PySersicSourcePrior('pointsource' , sky_type= sky_type,sky_guess=image_properties.sky_guess,sky_rms=image_properties.sky_rms,suffix=suffix)
+    prior = PySersicSourcePrior('pointsource' , sky_type= sky_type,sky_guess=image_properties.sky_guess,sky_guess_err=image_properties.sky_guess_err,suffix=suffix)
     
     prior.set_gaussian_prior('flux',image_properties.flux_guess,image_properties.flux_guess_err)
     
@@ -659,7 +671,7 @@ class SourceProperties():
         
         if self.mask is not None:
             self.cat = data_properties(self.image,mask=self.mask.astype(bool))
-            self.mask_image = np.ma.masked_array(self.image,self.mask)
+            self.image = np.ma.masked_array(self.image, self.mask )
         else:
             self.cat = data_properties(self.image)
         _ = self.measure_properties() 
@@ -672,13 +684,13 @@ class SourceProperties():
         self.set_sky_guess(**kwargs)
         return self
     
-    def set_sky_guess(self,sky_guess=None,sky_rms=None,n_pix_sample=5):
-        edge_pixels = np.concatenate((self.mask_image[:n_pix_sample,:],self.mask_image[-n_pix_sample:,:],self.mask_image[:,:n_pix_sample],self.mask_image[:,-n_pix_sample:]),axis=None)
+    def set_sky_guess(self,sky_guess=None,sky_guess_err=None,n_pix_sample=5):
+        edge_pixels = np.concatenate((self.image[:n_pix_sample,:],self.image[-n_pix_sample:,:],self.image[:,:n_pix_sample],self.image[:,-n_pix_sample:]),axis=None)
         median_val = np.median(edge_pixels)
         if sky_guess is None:
             self.sky_guess = median_val
-        if sky_rms is None:
-            self.sky_rms = np.std(edge_pixels)
+        if sky_guess_err is None:
+            self.sky_guess_err = np.std(edge_pixels)
         return self
 
     def set_flux_guess(self,flux_guess=None,flux_guess_err = None,**kwargs):
