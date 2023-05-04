@@ -664,7 +664,7 @@ def generate_pointsource_prior(image_properties,
 
 
 
-class ImageProperties():
+class SourceProperties():
     def __init__(self,image,mask=None):
         self.image = image 
         self.mask = mask 
@@ -672,7 +672,7 @@ class ImageProperties():
             self.cat = data_properties(self.image,mask=self.mask.astype(bool))
         else:
             self.cat = data_properties(self.image)
-    
+
     def visualize(self,figsize=(6,6),cmap='gray',scale=1):
         if not hasattr(self,'flux_guess'):
             self.set_flux_guess() 
@@ -702,15 +702,12 @@ class ImageProperties():
         ax.plot(x,y,'r',lw=2)
         plt.show() 
 
-
-        
-
     def measure_properties(self,**kwargs):
         self.set_flux_guess(**kwargs)
         self.set_r_eff_guess(**kwargs)
         self.set_theta_guess(**kwargs)
         self.set_position_guess(**kwargs)
-
+        return self
     def set_flux_guess(self,flux_guess=None,flux_guess_err = None,**kwargs):
         if flux_guess is None:
             flux_guess = self.cat.segment_flux
@@ -718,20 +715,22 @@ class ImageProperties():
             flux_guess_err = flux_guess_err
         else:
             if flux_guess > 0:
-                flux_guess_err = 2*jnp.sqrt( flux_guess )
+                flux_guess_err = 2*np.sqrt( flux_guess )
             else:
-                flux_guess_err = jnp.sqrt(jnp.abs(flux_guess))
+                flux_guess_err = np.sqrt(np.abs(flux_guess))
                 flux_guess = 0.
         
         self.flux_guess = flux_guess 
         self.flux_guess_err = flux_guess_err
+        return self 
     
     def set_r_eff_guess(self,r_eff_guess=None,**kwargs):
         if r_eff_guess is None:
             r_eff_guess = self.cat.kron_radius.value
     
         self.r_eff_guess = r_eff_guess
-        self.r_scale = jnp.sqrt(r_eff_guess) 
+        self.r_scale = np.sqrt(r_eff_guess) 
+        return self
 
     def set_theta_guess(self,theta_guess=None,**kwargs):
         if theta_guess is None:
@@ -740,7 +739,7 @@ class ImageProperties():
         if np.isnan(theta_guess):
             theta_guess = 0
         self.theta_guess = theta_guess 
-    
+        return self
     def set_position_guess(self,position_guess=None,**kwargs):
         if position_guess is None:
             self.xc_guess = self.cat.centroid_win[0]
@@ -748,16 +747,14 @@ class ImageProperties():
         else:
             self.xc_guess = position_guess[0]
             self.yc_guess = position_guess[1]
-
-    def autoprior(self,
+        return self
+    def generate_prior(self,
                 profile_type: str,
                 sky_type: Optional[str] = 'none')-> PySersicSourcePrior:
         """Function to generate default priors based on a given image and profile type
 
         Parameters
         ----------
-        image : jax.numpy.array
-            Masked image
         profile_type : str
             Type of profile
         sky_type : str, default 'none'
