@@ -172,7 +172,12 @@ class PySersicSourcePrior(BasePrior):
     """
     Class used for priors for single source fitting in PySersic
     """
-    def __init__(self, profile_type: str, sky_type: Optional[str] = 'none',suffix: Optional[str] =  "") -> None:
+    def __init__(self, 
+                profile_type: str, 
+                sky_type: Optional[str] = 'none',
+                sky_guess: Optional[float]=None,
+                sky_rms: Optional[float] = None,
+                suffix: Optional[str] =  "") -> None:
         """Initialize PySersicSourcePrior class
 
         Parameters
@@ -184,7 +189,7 @@ class PySersicSourcePrior(BasePrior):
         suffix : Optional[str], optional
             Additional suffix to add to each variable name, used in PySersicMultiPrior, by default ""
         """
-        super().__init__(sky_type= sky_type)
+        super().__init__(sky_type= sky_type,sky_guess=sky_guess,sky_rms=sky_rms)
         assert profile_type in base_profile_types
         self.profile_type = profile_type
         self.param_names = base_profile_params[self.profile_type]
@@ -402,7 +407,9 @@ class PySersicMultiPrior(BasePrior):
     """
     def __init__(self, 
             catalog: Union[pandas.DataFrame,dict, np.recarray],
-            sky_type: Optional[str] = 'none',     
+            sky_type: Optional[str] = 'none', 
+            sky_guess: Optional[float] = None,
+            sky_rms: Optional[float] = None    
             )-> None:
         """
         Ingest a catalog-like data structure containing prior positions and parameters for multiple sources in a single image. The format of the catalog can be a `pandas.DataFrame`, `numpy` RecordArray, dictionary, or any other format so-long as the following fields exist and can be directly indexed: 'x', 'y', 'flux', 'r' and 'type'
@@ -419,7 +426,7 @@ class PySersicMultiPrior(BasePrior):
             List containing a prior dictionary for each source
         """
 
-        super().__init__(sky_type = sky_type)
+        super().__init__(sky_type = sky_type,sky_guess=sky_guess,sky_rms=sky_rms)
         self.catalog = catalog
         self.all_priors = []
         self.N_sources = len(catalog['x'])
@@ -491,7 +498,7 @@ def generate_sersic_prior(image_properties,
         Dictionary containing numpyro Distribution objects for each parameter
 
     """
-    prior = PySersicSourcePrior('sersic', sky_type= sky_type, suffix=suffix)
+    prior = PySersicSourcePrior('sersic', sky_type= sky_type,sky_guess=image_properties.sky_guess,sky_rms=image_properties.sky_rms, suffix=suffix)
     prior.set_gaussian_prior('flux',image_properties.flux_guess,image_properties.flux_guess_err)
     prior.set_truncated_gaussian_prior('r_eff', image_properties.r_eff_guess,image_properties.r_scale, low = 0.5)
     prior.set_uniform_prior('ellip', 0, 0.9)
@@ -521,7 +528,7 @@ def generate_exp_prior(image_properties,
 
     """
     
-    prior = PySersicSourcePrior('exp', sky_type= sky_type, suffix=suffix)
+    prior = PySersicSourcePrior('exp', sky_type= sky_type,sky_guess=image_properties.sky_guess,sky_rms=image_properties.sky_rms, suffix=suffix)
     prior.set_gaussian_prior('flux',image_properties.flux_guess,image_properties.flux_guess_err)
     prior.set_truncated_gaussian_prior('r_eff', image_properties.r_eff_guess,image_properties.r_scale, low = 0.5)
     prior.set_uniform_prior('ellip', 0,0.9)
@@ -550,7 +557,7 @@ def generate_dev_prior(image_properties,
 
     """
     
-    prior = PySersicSourcePrior('dev', sky_type= sky_type, suffix=suffix)
+    prior = PySersicSourcePrior('dev', sky_type= sky_type,sky_guess=image_properties.sky_guess,sky_rms=image_properties.sky_rms, suffix=suffix)
     prior.set_gaussian_prior('flux',image_properties.flux_guess,image_properties.flux_guess_err)
     prior.set_truncated_gaussian_prior('r_eff', image_properties.r_eff_guess,image_properties.r_scale, low = 0.5)
     prior.set_uniform_prior('ellip', 0,0.9)
@@ -579,7 +586,7 @@ def generate_doublesersic_prior(image_properties,
 
     """
 
-    prior = PySersicSourcePrior('doublesersic', sky_type= sky_type, suffix=suffix)
+    prior = PySersicSourcePrior('doublesersic', sky_type= sky_type,sky_guess=image_properties.sky_guess,sky_rms=image_properties.sky_rms, suffix=suffix)
     prior.set_gaussian_prior('flux',image_properties.flux_guess,image_properties.flux_guess_err)
     prior.set_uniform_prior('f_1', 0.,1.)
 
@@ -625,7 +632,7 @@ def generate_pointsource_prior(image_properties,
 
     """
 
-    prior = PySersicSourcePrior('pointsource' , sky_type= sky_type, suffix=suffix)
+    prior = PySersicSourcePrior('pointsource' , sky_type= sky_type,sky_guess=image_properties.sky_guess,sky_rms=image_properties.sky_rms,suffix=suffix)
     
     prior.set_gaussian_prior('flux',image_properties.flux_guess,image_properties.flux_guess_err)
     
@@ -645,35 +652,6 @@ class SourceProperties():
             self.cat = data_properties(self.image,mask=self.mask.astype(bool))
         else:
             self.cat = data_properties(self.image)
-
-    def visualize(self,figsize=(6,6),cmap='gray',scale=1):
-        if not hasattr(self,'flux_guess'):
-            self.set_flux_guess() 
-        if not hasattr(self,'r_eff_guess'):
-            self.set_r_eff_guess()
-        if not hasattr(self,'theta_guess'):
-            self.set_theta_guess() 
-        if not hasattr(self,'xc_guess'):
-            self.set_position_guess()
-        
-        fig, ax = plt.subplots(figsize=figsize,)
-        if self.mask is not None:
-            image= np.ma.masked_array(self.image,mask=self.mask)
-        else:
-            image = self.image
-        vmin = np.mean(image) - scale*np.std(image)
-        vmax = np.mean(image) + scale*np.std(image)
-        ax.imshow(image,cmap=cmap,origin='lower',vmin=vmin,vmax=vmax)
-        ax.plot(self.xc_guess,self.yc_guess,'x',color='r')
-        
-        dx = 10*self.r_eff_guess*np.cos(self.theta_guess+np.pi/2.)
-        dy = 10*self.r_eff_guess*np.sin(self.theta_guess+np.pi/2.)
-        ax.arrow(self.xc_guess,self.yc_guess,dx=dx,dy=dy,width=0.1,head_width=1)
-        arr = np.linspace(0,2*np.pi,100)
-        x = np.cos(arr) * self.r_eff_guess + self.xc_guess 
-        y = np.sin(arr) * self.r_eff_guess + self.yc_guess 
-        ax.plot(x,y,'r',lw=2)
-        plt.show() 
 
     def measure_properties(self,**kwargs):
         self.set_flux_guess(**kwargs)
@@ -748,18 +726,47 @@ class SourceProperties():
             Dictionary containing numpyro Distribution objects for each parameter
         """
         if profile_type == 'sersic':
-            prior_dict = generate_sersic_prior(self, sky_type = sky_type)
+            prior_dict = generate_sersic_prior(self, sky_type = sky_type,sky_guess=self.sky_guess,sky_rms=self.sky_rms)
         
         elif profile_type == 'doublesersic':
-            prior_dict = generate_doublesersic_prior(self, sky_type = sky_type)
+            prior_dict = generate_doublesersic_prior(self, sky_type = sky_type,sky_guess=self.sky_guess,sky_rms=self.sky_rms)
 
         elif profile_type == 'pointsource':
-            prior_dict = generate_pointsource_prior(self, sky_type = sky_type)
+            prior_dict = generate_pointsource_prior(self, sky_type = sky_type,sky_guess=self.sky_guess,sky_rms=self.sky_rms)
 
         elif profile_type in 'exp':
-            prior_dict = generate_exp_prior(self, sky_type = sky_type)
+            prior_dict = generate_exp_prior(self, sky_type = sky_type,sky_guess=self.sky_guess,sky_rms=self.sky_rms)
 
         elif profile_type in 'dev':
-            prior_dict = generate_dev_prior(self, sky_type = sky_type)
+            prior_dict = generate_dev_prior(self, sky_type = sky_type,sky_guess=self.sky_guess,sky_rms=self.sky_rms)
         
         return prior_dict
+    
+    def visualize(self,figsize=(6,6),cmap='gray',scale=1):
+        if not hasattr(self,'flux_guess'):
+            self.set_flux_guess() 
+        if not hasattr(self,'r_eff_guess'):
+            self.set_r_eff_guess()
+        if not hasattr(self,'theta_guess'):
+            self.set_theta_guess() 
+        if not hasattr(self,'xc_guess'):
+            self.set_position_guess()
+        
+        fig, ax = plt.subplots(figsize=figsize,)
+        if self.mask is not None:
+            image= np.ma.masked_array(self.image,mask=self.mask)
+        else:
+            image = self.image
+        vmin = np.mean(image) - scale*np.std(image)
+        vmax = np.mean(image) + scale*np.std(image)
+        ax.imshow(image,cmap=cmap,origin='lower',vmin=vmin,vmax=vmax)
+        ax.plot(self.xc_guess,self.yc_guess,'x',color='r')
+        
+        dx = 10*self.r_eff_guess*np.cos(self.theta_guess+np.pi/2.)
+        dy = 10*self.r_eff_guess*np.sin(self.theta_guess+np.pi/2.)
+        ax.arrow(self.xc_guess,self.yc_guess,dx=dx,dy=dy,width=0.1,head_width=1)
+        arr = np.linspace(0,2*np.pi,100)
+        x = np.cos(arr) * self.r_eff_guess + self.xc_guess 
+        y = np.sin(arr) * self.r_eff_guess + self.yc_guess 
+        ax.plot(x,y,'r',lw=2)
+        plt.show() 
