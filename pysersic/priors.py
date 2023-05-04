@@ -656,8 +656,10 @@ class SourceProperties():
     def __init__(self,image,mask=None):
         self.image = image 
         self.mask = mask 
+        
         if self.mask is not None:
             self.cat = data_properties(self.image,mask=self.mask.astype(bool))
+            self.mask_image = np.ma.masked_array(self.image,self.mask)
         else:
             self.cat = data_properties(self.image)
         _ = self.measure_properties() 
@@ -671,7 +673,7 @@ class SourceProperties():
         return self
     
     def set_sky_guess(self,sky_guess=None,sky_rms=None,n_pix_sample=5):
-        edge_pixels = np.concatenate((self.image[:n_pix_sample,:],self.image[-n_pix_sample:,:],self.image[:,:n_pix_sample],self.image[:,-n_pix_sample:]),axis=None)
+        edge_pixels = np.concatenate((self.mask_image[:n_pix_sample,:],self.mask_image[-n_pix_sample:,:],self.mask_image[:,:n_pix_sample],self.mask_image[:,-n_pix_sample:]),axis=None)
         median_val = np.median(edge_pixels)
         if sky_guess is None:
             self.sky_guess = median_val
