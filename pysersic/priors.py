@@ -208,6 +208,9 @@ class PySersicSourcePrior(BasePrior):
         out += "\n" + "-"*num_dash + "\n"
         for (var, descrip) in self.repr_dict.items():
             out += var + " ---  " + descrip + "\n"    
+        out+= f'sky mode: {self.sky_type}\n'
+        out+=f'sky level: {self.sky_guess}\n'
+        out+=f'sky rms: {self.sky_rms}\n'
         return out
     
     def _build_dist_list(self)-> None:
