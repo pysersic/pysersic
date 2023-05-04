@@ -420,24 +420,25 @@ class PySersicMultiPrior(BasePrior):
         self.N_sources = len(catalog['x'])
         image = jnp.ones((100,100)) # dummy image
         for ind in range(len(catalog['x'])):
-
-            init = dict(flux_guess = catalog['flux'][ind], r_eff_guess = catalog['r'][ind], position_guess = (catalog['x'][ind],catalog['y'][ind]) )
+            properties = SourceProperties(image)
+            properties.set_flux_guess(catalog['flux'][ind])
+            properties.set_r_eff_guess(r_eff_guess = catalog['r'][ind])
+            properties.set_position_guess((catalog['x'][ind],catalog['y'][ind]) )
 
             if catalog['type'][ind] == 'sersic':
-                prior = generate_sersic_prior(image,suffix = f'_{ind:d}', **init)
+                prior = generate_sersic_prior(properties,suffix = f'_{ind:d}')
             
             elif catalog['type'][ind] == 'doublesersic':
-                prior = generate_doublesersic_prior(image,suffix = f'_{ind:d}', **init)
+                prior = generate_doublesersic_prior(properties,suffix = f'_{ind:d}')
 
             elif catalog['type'][ind] == 'pointsource':
-                init.pop('r_eff_guess')
-                prior = generate_pointsource_prior(image,suffix = f'_{ind:d}', **init)
+                prior = generate_pointsource_prior(properties,suffix = f'_{ind:d}')
 
             elif catalog['type'][ind] == 'exp':
-                prior = generate_exp_prior(image,suffix = f'_{ind:d}', **init)
+                prior = generate_exp_prior(properties,suffix = f'_{ind:d}')
             
             elif catalog['type'][ind] == 'dev':
-                prior = generate_dev_prior(image,suffix = f'_{ind:d}', **init)
+                prior = generate_dev_prior(properties,suffix = f'_{ind:d}')
         
             self.all_priors.append(prior)
             self.reparam_dict.update(prior.reparam_dict)
@@ -460,43 +461,6 @@ class PySersicMultiPrior(BasePrior):
         for prior_cur in self.all_priors:
             all_params.append(prior_cur())
         return all_params
-
-def autoprior(image_properties,
-            profile_type: str,
-            mask: Optional[jax.numpy.array] = None,
-            sky_type: Optional[str] = 'none')-> PySersicSourcePrior:
-    """Function to generate default priors based on a given image and profile type
-
-    Parameters
-    ----------
-    image : jax.numpy.array
-        Masked image
-    profile_type : str
-        Type of profile
-    sky_type : str, default 'none'
-        Type of sky model to use, must be one of: 'none', 'flat', 'tilted-plane'
-    Returns
-    -------
-    dict
-        Dictionary containing numpyro Distribution objects for each parameter
-    """
-    image_properties = ImageProperties(image,mask)
-    if profile_type == 'sersic':
-        prior_dict = generate_sersic_prior(image_properties, sky_type = sky_type)
-    
-    elif profile_type == 'doublesersic':
-        prior_dict = generate_doublesersic_prior(image_properties, sky_type = sky_type)
-
-    elif profile_type == 'pointsource':
-        prior_dict = generate_pointsource_prior(image_properties, sky_type = sky_type)
-
-    elif profile_type in 'exp':
-        prior_dict = generate_exp_prior(image_properties, sky_type = sky_type)
-
-    elif profile_type in 'dev':
-        prior_dict = generate_dev_prior(image_properties, sky_type = sky_type)
-    
-    return prior_dict
 
 
 def generate_sersic_prior(image_properties,
