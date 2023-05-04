@@ -480,6 +480,7 @@ def autoprior(image_properties,
     dict
         Dictionary containing numpyro Distribution objects for each parameter
     """
+    image_properties = ImageProperties(image,mask)
     if profile_type == 'sersic':
         prior_dict = generate_sersic_prior(image_properties, sky_type = sky_type)
     
@@ -747,3 +748,38 @@ class ImageProperties():
         else:
             self.xc_guess = position_guess[0]
             self.yc_guess = position_guess[1]
+
+    def autoprior(self,
+                profile_type: str,
+                sky_type: Optional[str] = 'none')-> PySersicSourcePrior:
+        """Function to generate default priors based on a given image and profile type
+
+        Parameters
+        ----------
+        image : jax.numpy.array
+            Masked image
+        profile_type : str
+            Type of profile
+        sky_type : str, default 'none'
+            Type of sky model to use, must be one of: 'none', 'flat', 'tilted-plane'
+        Returns
+        -------
+        dict
+            Dictionary containing numpyro Distribution objects for each parameter
+        """
+        if profile_type == 'sersic':
+            prior_dict = generate_sersic_prior(self, sky_type = sky_type)
+        
+        elif profile_type == 'doublesersic':
+            prior_dict = generate_doublesersic_prior(self, sky_type = sky_type)
+
+        elif profile_type == 'pointsource':
+            prior_dict = generate_pointsource_prior(self, sky_type = sky_type)
+
+        elif profile_type in 'exp':
+            prior_dict = generate_exp_prior(self, sky_type = sky_type)
+
+        elif profile_type in 'dev':
+            prior_dict = generate_dev_prior(self, sky_type = sky_type)
+        
+        return prior_dict
