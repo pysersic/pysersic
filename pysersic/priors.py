@@ -424,7 +424,9 @@ class PySersicMultiPrior(BasePrior):
             sky_guess_err: Optional[float] = None    
             )-> None:
         """
-        Ingest a catalog-like data structure containing prior positions and parameters for multiple sources in a single image. The format of the catalog can be a `pandas.DataFrame`, `numpy` RecordArray, dictionary, or any other format so-long as the following fields exist and can be directly indexed: 'x', 'y', 'flux', 'r' and 'type'
+        Ingest a catalog-like data structure containing prior positions and parameters for multiple sources in a single image. 
+        The format of the catalog can be a `pandas.DataFrame`, `numpy` RecordArray, dictionary, or any other format so-long as 
+        the following fields exist and can be directly indexed: 'x', 'y', 'flux', 'r' and 'type'
 
         Parameters
         ----------
@@ -437,8 +439,10 @@ class PySersicMultiPrior(BasePrior):
         prior_list : Iterable
             List containing a prior dictionary for each source
         """
+        image = jnp.zeros((100,100)) # dummy image
+        properties = SourceProperties(image)
         if sky_type != 'none':
-            assert sky_guess is not None and sky_guess_err is not None, "If using a sky model must provide initial guess and uncertainty"
+                assert sky_guess is not None and sky_guess_err is not None, "If using a sky model must provide initial guess and uncertainty"
 
         super().__init__(sky_type = sky_type,sky_guess=sky_guess,sky_guess_err=sky_guess_err)
         self.catalog = catalog
@@ -446,7 +450,6 @@ class PySersicMultiPrior(BasePrior):
         self.N_sources = len(catalog['x'])
         image = jnp.zeros((100,100)) # dummy image
         for ind in range(len(catalog['x'])):
-            properties = SourceProperties(image)
             properties.set_flux_guess(catalog['flux'][ind])
             properties.set_r_eff_guess(r_eff_guess = catalog['r'][ind])
             properties.set_position_guess((catalog['x'][ind],catalog['y'][ind]) )
