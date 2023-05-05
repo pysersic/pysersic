@@ -1,6 +1,6 @@
 import pytest
 import jax.numpy as jnp
-from pysersic.priors import BasePrior, autoprior, PySersicMultiPrior, PySersicSourcePrior
+from pysersic.priors import BasePrior, PySersicMultiPrior, PySersicSourcePrior, SourceProperties
 from numpyro.handlers import seed
 from numpyro import distributions as dist
 
@@ -11,12 +11,20 @@ prof_vars = [ ['xc','yc','flux','r_eff','n','ellip','theta'],
         ['xc','yc','flux','r_eff','ellip','theta'],
         ['xc','yc','flux','r_eff','ellip','theta'],]
 
+@pytest.mark.parametrize('mask', [None, jnp.zeros((100,100))])
+def test_SourceProperties(mask):
+    test_im = jnp.ones((100,100))
+    SP = SourceProperties(test_im, mask = mask)
+    SP.measure_properties()
+    attribues = ['sky_guess','sky_guess_err', 'flux_guess','flux_guess_err', 'r_eff_guess','r_eff_guess_err','xc_guess','yc_guess']
+    for var in attribues:
+        assert hasattr(SP, var)
+
 @pytest.mark.parametrize('prof, var_names', zip(prof_names,prof_vars) )
 def test_prior_gen(prof, var_names):
-    image = jnp.ones((100,100))
-    prior_class = autoprior(image, prof)
+    props = SourceProperties(jnp.ones((100,100)) )
+    prior_class = props.generate_prior(profile_type = prof)
     assert prior_class.check_vars(verbose = True)
-
 
 def test_sky_sampling():
     x = jnp.arange(100)
@@ -27,12 +35,12 @@ def test_sky_sampling():
         params_1 = prior_class.sample_sky(X,Y)
     assert params_1 == 0
 
-    prior_class = BasePrior(sky_type = 'flat')
+    prior_class = BasePrior(sky_type = 'flat', sky_guess = 0, sky_guess_err = 1)
     with seed(rng_seed=1):
         params_2 = prior_class.sample_sky(X,Y)
     assert params_2.shape == () # Should be single value
 
-    prior_class = BasePrior(sky_type = 'tilted-plane')
+    prior_class = BasePrior(sky_type = 'tilted-plane', sky_guess = 0, sky_guess_err = 1)
     with seed(rng_seed=1):
         params_3 = prior_class.sample_sky(X,Y)
     assert params_3.shape == (100,100) # Should be 2D array 
@@ -64,5 +72,5 @@ def test_PySersicMultiPrior():
     assert params[1] == pytest.approx([1.5656178e+01,  1.3875072e+01,  1.2103964e+02,
                  6.8203964e+00,  3.2803586e-01, -4.2930365e-02] , rel=1e-5)
     assert params[2] == pytest.approx([ 1.82923260e+01,  1.13821745e+01,  1.21627632e+02,
-                3.51738358e+00,  3.15475965e+00,  8.82269740e-02,
+                3.51738358e+00,  7.0026627e+00,  8.82269740e-02,
                 -6.36531591e-01 ], rel=1e-5)

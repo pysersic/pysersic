@@ -47,10 +47,8 @@ class BasePrior(ABC):
         if sky_guess is None:
             self.sky_guess = 0.0 
         else:
+            assert sky_guess is not None and sky_guess_err is not None, 'If using fitting a sky then must supply a guess and uncertainty on the background value'
             self.sky_guess = sky_guess
-        if sky_guess_err is None:
-            self.sky_guess_err = 1e-3
-        else:
             self.sky_guess_err = sky_guess_err
 
         if self.sky_type not in base_sky_types:
@@ -520,7 +518,7 @@ def generate_sersic_prior(image_properties,
     """
     prior = PySersicSourcePrior('sersic', sky_type= sky_type,sky_guess=image_properties.sky_guess,sky_guess_err=image_properties.sky_guess_err, suffix=suffix)
     prior.set_gaussian_prior('flux',image_properties.flux_guess,image_properties.flux_guess_err)
-    prior.set_truncated_gaussian_prior('r_eff', image_properties.r_eff_guess,image_properties.r_scale, low = 0.5)
+    prior.set_truncated_gaussian_prior('r_eff', image_properties.r_eff_guess,image_properties.r_eff_guess_err, low = 0.5)
     prior.set_uniform_prior('ellip', 0, 0.9)
     prior.set_custom_prior('theta', dist.VonMises(loc = image_properties.theta_guess,concentration=2), reparam= infer.reparam.CircularReparam() )
     prior.set_uniform_prior('n', 0.5, 8)
@@ -550,7 +548,7 @@ def generate_exp_prior(image_properties,
     
     prior = PySersicSourcePrior('exp', sky_type= sky_type,sky_guess=image_properties.sky_guess,sky_guess_err=image_properties.sky_guess_err, suffix=suffix)
     prior.set_gaussian_prior('flux',image_properties.flux_guess,image_properties.flux_guess_err)
-    prior.set_truncated_gaussian_prior('r_eff', image_properties.r_eff_guess,image_properties.r_scale, low = 0.5)
+    prior.set_truncated_gaussian_prior('r_eff', image_properties.r_eff_guess,image_properties.r_eff_guess_err, low = 0.5)
     prior.set_uniform_prior('ellip', 0,0.9)
     prior.set_custom_prior('theta', dist.VonMises(loc = image_properties.theta_guess,concentration=2), reparam= infer.reparam.CircularReparam() )
     prior.set_gaussian_prior('xc', image_properties.xc_guess, 1)
@@ -579,7 +577,7 @@ def generate_dev_prior(image_properties,
     
     prior = PySersicSourcePrior('dev', sky_type= sky_type,sky_guess=image_properties.sky_guess,sky_guess_err=image_properties.sky_guess_err, suffix=suffix)
     prior.set_gaussian_prior('flux',image_properties.flux_guess,image_properties.flux_guess_err)
-    prior.set_truncated_gaussian_prior('r_eff', image_properties.r_eff_guess,image_properties.r_scale, low = 0.5)
+    prior.set_truncated_gaussian_prior('r_eff', image_properties.r_eff_guess,image_properties.r_eff_guess_err, low = 0.5)
     prior.set_uniform_prior('ellip', 0,0.9)
     prior.set_custom_prior('theta', dist.VonMises(loc = image_properties.theta_guess,concentration=2), reparam= infer.reparam.CircularReparam() )
     prior.set_gaussian_prior('xc', image_properties.xc_guess, 1)
@@ -613,12 +611,12 @@ def generate_doublesersic_prior(image_properties,
     prior.set_custom_prior('theta', dist.VonMises(loc = image_properties.theta_guess,concentration=2), reparam= infer.reparam.CircularReparam() )
 
     r_loc1 = image_properties.r_eff_guess/1.5
-    r_scale1 = jnp.sqrt(image_properties.r_eff_guess/1.5)
-    prior.set_truncated_gaussian_prior('r_eff_1', r_loc1,r_scale1, low = 0.5)
+    r_eff_guess_err1 = jnp.sqrt(image_properties.r_eff_guess/1.5)
+    prior.set_truncated_gaussian_prior('r_eff_1', r_loc1,r_eff_guess_err1, low = 0.5)
 
     r_loc2 = image_properties.r_eff_guess*1.5
-    r_scale2 = jnp.sqrt(image_properties.r_eff_guess*1.5)
-    prior.set_truncated_gaussian_prior('r_eff_2', r_loc2,r_scale2, low = 0.5)
+    r_eff_guess_err2 = jnp.sqrt(image_properties.r_eff_guess*1.5)
+    prior.set_truncated_gaussian_prior('r_eff_2', r_loc2,r_eff_guess_err2, low = 0.5)
 
 
     prior.set_uniform_prior('ellip_1', 0,0.9)
@@ -714,7 +712,7 @@ class SourceProperties():
             r_eff_guess = self.cat.kron_radius.value
     
         self.r_eff_guess = r_eff_guess
-        self.r_scale = np.sqrt(r_eff_guess) 
+        self.r_eff_guess_err = np.sqrt(r_eff_guess) 
         return self
 
     def set_theta_guess(self,theta_guess=None,**kwargs):
@@ -733,6 +731,7 @@ class SourceProperties():
             self.xc_guess = position_guess[0]
             self.yc_guess = position_guess[1]
         return self
+    
     def generate_prior(self,
                 profile_type: str,
                 sky_type: Optional[str] = 'none')-> PySersicSourcePrior:

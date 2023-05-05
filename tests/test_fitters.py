@@ -14,7 +14,8 @@ psf = Gaussian2DKernel(x_stddev=2.5).array
 renderer = rendering.HybridRenderer((40,40), psf)
 im = im + renderer.render_pointsource(20.,20., 200.)
 
-prior = priors.generate_pointsource_prior(im)
+props = priors.SourceProperties(im)
+prior = props.generate_prior(profile_type='pointsource')
 
 fitter_single = FitSingle(im,rms,psf,prior)
 
