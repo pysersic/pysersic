@@ -60,7 +60,7 @@ class BaseFitter(ABC):
             
         self.data = jnp.array(data) 
         self.rms = jnp.array(rms)
-        self.psf = jnp.array(rms)
+        self.psf = jnp.array(psf)
 
         if mask is None:
             self.mask = jnp.ones_like(self.data).astype(jnp.bool_)
