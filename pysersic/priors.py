@@ -1,15 +1,15 @@
 
-from numpyro import distributions as dist, infer, sample
-import jax.numpy as jnp 
-import jax
-import pandas
-import numpy as np
-from typing import Union, Optional, Iterable
 from abc import ABC
-from .utils.utils import render_tilted_plane_sky
-from photutils.morphology import data_properties
+from typing import Iterable, Optional, Union
+
 import astropy.units as u
-import matplotlib.pyplot as plt 
+import jax
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas
+from numpyro import distributions as dist, infer, sample
+from photutils.morphology import data_properties
 
 base_sky_types = ['none','flat','tilted-plane']
 base_sky_params = dict(
@@ -17,6 +17,13 @@ base_sky_params = dict(
     [ [],['sky_back',], ['sky_back','sky_x_sl','sky_y_sl'] ]
     )
 )
+
+@jax.jit
+def render_tilted_plane_sky(X,Y,back,x_sl,y_sl ):
+    xmid = float(X.shape[0]/2.)
+    ymid = float(Y.shape[0]/2.)
+    return back + (X-xmid)*x_sl + (Y-ymid)*y_sl
+
 
 base_profile_types = ['sersic','doublesersic','pointsource','exp','dev']
 base_profile_params =dict( 
@@ -795,4 +802,6 @@ class SourceProperties():
         x = np.cos(arr) * self.r_eff_guess + self.xc_guess 
         y = np.sin(arr) * self.r_eff_guess + self.yc_guess 
         ax.plot(x,y,'r',lw=2)
-        plt.show() 
+        plt.show()
+
+

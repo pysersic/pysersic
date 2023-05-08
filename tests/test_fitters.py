@@ -2,9 +2,13 @@ import pytest
 import numpy as np
 from pysersic import FitSingle,FitMulti, priors, rendering
 from astropy.convolution import Gaussian2DKernel
-import matplotlib.pyplot as plt
 from jax.random import PRNGKey
 import arviz
+from numpyro import distributions as dist,infer,sample, optim
+from pysersic.pysersic import train_numpyro_svi_early_stop
+
+
+
 
 im = np.zeros((40,40))
 rng = np.random.default_rng(seed=10)
@@ -118,3 +122,12 @@ def test_FitMulti_sample():
         assert post_sum['sd']['yc_0'] == pytest.approx(0.01, rel = 1e-1)
         assert post_sum['mean']['yc_1'] == pytest.approx(10., rel = 1e-2)
         assert post_sum['sd']['yc_1'] == pytest.approx(0.01, rel = 1e-1)
+
+def test_train_numpyro_svi():
+    def model():
+        a = sample('a', dist.Normal())
+
+    guide =infer.autoguide.AutoDelta(model)
+    svi_kernel = infer.SVI(model,guide, optim.Adam(0.001), loss = infer.Trace_ELBO())
+    res = train_numpyro_svi_early_stop(svi_kernel)
+    assert float(res.params['a_auto_loc']) == pytest.approx(0, abs = 1e-2)

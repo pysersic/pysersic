@@ -1,3 +1,4 @@
+import copy
 from abc import ABC, abstractmethod
 from functools import partial
 from typing import Callable, Optional, Union
@@ -7,17 +8,19 @@ import jax.numpy as jnp
 import numpy as np
 import numpyro
 import pandas
-from numpyro import infer, deterministic
+import tqdm
+from jax.random import PRNGKey
+from numpyro import deterministic, infer, optim
+from numpyro.handlers import condition, trace
 from numpyro.infer import SVI, Trace_ELBO
-from numpyro.optim import Adam
-from pysersic.rendering import (
-    BaseRenderer,
-    HybridRenderer,
-)
-from pysersic.priors import PySersicSourcePrior, PySersicMultiPrior
-from pysersic.utils import gaussian_loss, train_numpyro_svi_early_stop 
+from numpyro.infer.svi import SVIRunResult
+
+from pysersic.priors import PySersicMultiPrior, PySersicSourcePrior
+from pysersic.rendering import BaseRenderer, HybridRenderer
 from pysersic.results import PySersicResults
-from numpyro.handlers import trace,condition
+
+from .loss import gaussian_loss
+
 ArrayLike = Union[np.array, jax.numpy.array]
 
 class BaseFitter(ABC):
@@ -186,7 +189,7 @@ class BaseFitter(ABC):
         model_cur = self.build_model(return_model=return_model)
         guide = autoguide(model_cur)
 
-        svi_kernel = SVI(model_cur,guide, Adam(0.1), loss = ELBO_loss, **SVI_kwargs)
+        svi_kernel = SVI(model_cur,guide, optim.Adam(0.1), loss = ELBO_loss, **SVI_kwargs)
         numpyro_svi_result = train_numpyro_svi_early_stop(svi_kernel,rkey=rkey,lr_init=lr_init,
                                                         num_round=num_round, **train_kwargs)
 
@@ -218,8 +221,8 @@ class BaseFitter(ABC):
         """
         model_cur = self.build_model(return_model=return_model)
         autoguide_map = infer.autoguide.AutoDelta(model_cur, init_loc_fn= infer.init_to_median)
-        train_kwargs = dict(lr_init = 0.01, num_round = 3,frac_lr_decrease  = 0.1, patience = 250, optimizer = Adam)
-        svi_kernel = SVI(model_cur,autoguide_map, Adam(0.01),loss=Trace_ELBO())
+        train_kwargs = dict(lr_init = 0.01, num_round = 3,frac_lr_decrease  = 0.1, patience = 250, optimizer = optim.Adam)
+        svi_kernel = SVI(model_cur,autoguide_map, optim.Adam(0.01),loss=Trace_ELBO())
         
         res = train_numpyro_svi_early_stop(svi_kernel,rkey=rkey, **train_kwargs)
 
@@ -436,3 +439,86 @@ class FitMulti(BaseFitter):
                 results_dict[f'source_{i}'][pname] = raw_dict.pop(pname + f'_{i:d}')
         results_dict.update(raw_dict)
         return results_dict
+
+
+
+
+def train_numpyro_svi_early_stop(
+        svi_class: SVI,
+        num_round: Optional[int] = 3,
+        max_train: Optional[int] = 5000,
+        lr_init: Optional[float] = 0.01,
+        frac_lr_decrease: Optional[float]  = 0.1,
+        patience: Optional[int] = 100,
+        optimizer: Optional[optim._NumPyroOptim] = optim.Adam,
+        rkey: Optional[PRNGKey] = PRNGKey(10),
+    )-> SVIRunResult:
+    """Optimize a SVI model by training for multiple rounds with a deacreasing learning rate, and early stopping for each round
+
+    Parameters
+    ----------
+    svi_class : SVI
+        Initialized numpyo SVI class, note that the optimizer will be overwritten
+    num_round : Optional[int], optional
+        Number of training rounds, by default 3
+    max_train : Optional[int], optional
+        Max number of training epochs per ropund, by default 3000
+    lr_init : Optional[float], optional
+        Initial learning rate, by default 0.1
+    frac_lr_decrease : Optional[float], optional
+        Multiplicative factor to change learning rate each round, by default 0.1
+    patience : Optional[int], optional
+        Number of training epochs to wait for improvement, by default 100
+    optimizer : Optional[optim._NumPyroOptim], optional
+        Optimizer algorithm tro use, by default optim.Adam
+    rkey : Optional[PRNGKey], optional
+        Jax PRNG key, by default PRNGKey(10)
+
+    Returns
+    -------
+    SVIRunResult
+        SVI Result class containing trained model
+    """
+    optim_init = optimizer(lr_init)
+    svi_class.__setattr__('optim', optim_init)
+
+    init_state = svi_class.init(rkey)
+    all_losses = []
+
+    @partial(jax.jit, static_argnums = 1)
+    def update_func(state,svi_class,lr):
+        svi_class.__setattr__('optim', optimizer(lr))
+        state,loss = svi_class.stable_update(state)
+        return state,loss
+
+    best_state, best_loss = update_func(init_state, svi_class, lr_init)
+    
+    for r in range(num_round):
+        losses = []
+        wait_counter = 0
+        svi_state = copy.copy(best_state)
+
+        if r>0:
+            lr_cur = lr_init*frac_lr_decrease**r
+            best_loss = jnp.inf
+        else:
+            lr_cur = lr_init
+
+        with tqdm.trange(1, max_train + 1) as t:
+            for j in t:
+                svi_state, loss = update_func(svi_state, svi_class, lr_cur)
+                if loss < best_loss:
+                    best_loss = loss
+                    best_state = copy.copy(svi_state)
+                    wait_counter = 0
+                elif wait_counter >= patience:
+                    break
+                else:
+                    wait_counter += 1
+                t.set_postfix_str(f'Round = {r:d},step_size = {lr_cur:.1e} loss: {best_loss:.3e}',refresh=False)
+                losses.append(loss)
+        
+        all_losses.append(losses)
+
+    return SVIRunResult(svi_class.get_params(best_state), svi_state,losses)
+    

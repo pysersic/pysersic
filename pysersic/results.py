@@ -1,22 +1,24 @@
-from typing import Callable, Optional, Union, Tuple
-import numpyro 
-import jax 
-from jax import random 
-import pandas 
-import numpy as np 
+import copy
+from typing import Callable, Optional, Tuple, Union
+
+import arviz as az
+import asdf
 import corner
+import jax
 import jax.numpy as jnp
-import arviz as az 
+import matplotlib.pyplot as plt
+import numpy as np
+import numpyro
+import pandas as pd
+import xarray
+from jax import random
+from mpl_toolkits.axes_grid1.axes_divider import make_axes_locatable
+
 from pysersic.priors import PySersicMultiPrior
+from pysersic.rendering import BaseRenderer
+
 ArrayLike = Union[np.array, jax.numpy.array]
 ListLike = Union[np.array,jax.numpy.array,list]
-from pysersic.rendering import (
-    BaseRenderer,
-)
-import asdf 
-import pandas as pd 
-import xarray
-import copy
 
 class PySersicResults():
     def __init__(self,
@@ -76,7 +78,7 @@ class PySersicResults():
                 svi_res_dict: Optional[dict] =  None,
                 purge_extra: Optional[bool] = True,
                 rkey: Optional[jax.random.PRNGKey] = random.PRNGKey(5)
-        ) -> pandas.DataFrame:
+        ) -> pd.DataFrame:
         """Method to injest data from optimized SVI model or results of sampling. 
         When sampling data is input, sets the class attribute `sampling_results`, while for an SVI run, saves `svi_results.`
         A PysersicResults object can have at most data for one SVI and one sampling run. Both class atttributes are 
@@ -399,3 +401,103 @@ def parse_multi_results(results: PySersicResults, source_num: int) -> PySersicRe
         new_res.__delattr__('idata')
         new_res.__setattr__('idata', idata_source)
     return new_res
+
+
+def get_bounds(im: np.array ,scale: float) -> Tuple[float,float]:
+    """Generate bounds based on image mean and standard deviation
+
+    Parameters
+    ----------
+    im : np.array
+        images
+    scale : float
+        Number of +/- sigmas for bounds
+
+    Returns
+    -------
+    Tuple[float,float]
+       Bounds to use
+    """
+    m = np.mean(im)
+    s = np.std(im)
+    vmin = m - scale*s 
+    vmax = m+scale*s 
+    return vmin, vmax
+
+def plot_image(image: np.array,mask: np.array,sig: np.array,psf: np.array,cmap:str ='gray_r',scale:float = 2.0,size:float = 8.) -> Tuple[plt.Figure,plt.Axes]:
+    """Plot a summary figure with the image, sigma map and psf side by side
+
+    Parameters
+    ----------
+    image : np.array
+        Image to plot
+    mask : np.array
+        Mask
+    sig : np.array
+        sigma or noise map
+    psf : np.array
+        Point spread function
+    cmap : str, optional
+        Color map to use, by default 'gray_r'
+    scale : float, optional
+        Number of +/- std's of image to make the bounds, by default 2.0
+    size : float, optional
+        Size of figure, will be size*3 x size, by default 8.
+
+    Returns
+    -------
+    Tuple[plt.Figure,plt.Axes]
+        Figure and axes objects
+    """
+    im_ratio = image.shape[0]/image.shape[1]
+    fig, ax = plt.subplots(1,3,figsize=(size*3,size*im_ratio))
+    masked_image = np.ma.masked_array(image,mask)
+    masked_sigma = np.ma.masked_array(sig,mask)
+    im_vmin, im_vmax = get_bounds(masked_image,scale)
+    sig_vmin,sig_vmax = get_bounds(masked_sigma,scale)
+    psf_vmin,psf_vmax = get_bounds(psf,scale)
+    ax[0].imshow(masked_image,origin='lower',cmap=cmap,vmin=im_vmin,vmax=im_vmax)
+    ax[1].imshow(masked_sigma,origin='lower',cmap=cmap,vmin=sig_vmin,vmax=sig_vmax)
+    ax[2].imshow(psf,origin='lower',cmap=cmap,vmin=psf_vmin,vmax=psf_vmax)
+    return fig, ax
+
+
+def plot_residual(image: np.array,model: np.array,mask: np.array = None,scale:float =2.0,cmap:str ='gray_r',colorbar:bool =True,**resid_plot_kwargs)-> Tuple[plt.Figure,plt.Axes]:
+    """Generate a summary plot comparing the data to the best fit model
+
+    Parameters
+    ----------
+    image : np.array
+        Original image
+    model : np.array
+        Best fit model image
+    mask : np.array, optional
+        Pixel by Pixel mask, by default None
+    scale : float, optional
+        Number of +/- std's to make the bounds of the image, by default 2.0
+    cmap : str, optional
+        color map to use, by default 'gray_r'
+    colorbar : bool, optional
+        Whether or not to show a color bar, by default True
+
+    Returns
+    -------
+    Tuple[plt.Figure,plt.Axes]
+        Figure and axes objects
+    """
+    fig, ax = plt.subplots(1,3,figsize=(13,3))
+    if mask is not None:
+        masked_image = np.ma.masked_array(image,mask)
+        masked_model = np.ma.masked_array(model,mask)
+    else:
+        masked_image = image 
+        masked_model = model 
+    im_vmin, im_vmax = get_bounds(masked_image,scale)
+    ax[0].imshow(masked_image,origin='lower',cmap=cmap,vmin=im_vmin,vmax=im_vmax)
+    ax[1].imshow(masked_model,origin='lower',cmap=cmap,vmin=im_vmin,vmax=im_vmax)
+    residual = masked_image - masked_model 
+    ri = ax[2].imshow(residual,origin='lower',cmap='seismic',**resid_plot_kwargs)
+    ax1_divider = make_axes_locatable(ax[2])
+    cax1 = ax1_divider.append_axes("right", size="7%", pad="2%")
+    cb1 = fig.colorbar(ri, cax=cax1)
+    return fig, ax 

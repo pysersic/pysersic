@@ -1,5 +1,5 @@
 from pysersic.rendering import PixelRenderer,FourierRenderer,HybridRenderer, BaseRenderer
-from pysersic.utils.rendering_utils import render_sersic_2d
+from pysersic.rendering import render_sersic_2d
 from astropy.convolution import Gaussian2DKernel
 import pytest
 import jax.numpy as jnp

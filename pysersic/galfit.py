@@ -1,10 +1,12 @@
-import numpy as np
-from astropy.io import fits
 from typing import Iterable, Union
-import jax.numpy as jnp
 
-from pysersic import priors, FitMulti, FitSingle
-from .loss import gaussian_mixture
+import jax.numpy as jnp
+from astropy.io import fits
+
+from pysersic import FitMulti, FitSingle, priors
+
+from .loss import gaussian_loss
+
 
 def search_start(list_of_strings: Iterable, to_match: str)-> list:
     """Search a list of strings and match those which start with to_match
@@ -67,15 +69,15 @@ def match_line_and_load_galfit(list_of_strings: Iterable, to_match: str, assert_
         raise UserWarning(assert_message)
     return load_fits_from_galfit_line(line)
 
-def generate_fitter_from_galfit_config(config_loc: str, loss: callable = gaussian_mixture ) -> Union[FitSingle,FitMulti]:
-    """Function to generate a Fitter instance from a galfit config file. This is only a starting place and not all of the rules and constraints in the galfit config file are taken into account. For more fine grained control we reccomend iniatilizing a pysersic Fitter instance yourself, please see the examples/ folder for some examples of this. 
+def generate_fitter_from_galfit_config(config_loc: str, loss: callable = gaussian_loss ) -> Union[FitSingle,FitMulti]:
+    """Function to generate a Fitter instance from a galfit config file. This function is only meant to be a starting place to easily try PySersic on the many galfit config files we know you all have lying around. As such this does not follow all of the rules and constraints the galfit takes into acocunt. For more fine grained control we reccomend iniatilizing a pysersic Fitter instance yourself, please see the `examples/` folder or the documentation for some help with this. 
 
     Parameters
     ----------
     config_loc : str
         Config file locations
     loss : callable, optional
-        Loss function to use, see loss.py for more details, by default gaussian_mixture
+        Loss function to use, see loss.py for more details, by default gaussian_loss
 
     Returns
     -------
@@ -94,12 +96,11 @@ def generate_fitter_from_galfit_config(config_loc: str, loss: callable = gaussia
     im = match_line_and_load_galfit(lines, 'A)', assert_message='Missing science image, labelled D) in config file')
     rms = match_line_and_load_galfit(lines, 'C)', assert_message='Missing rms image, labelled C) in config file')
     psf = match_line_and_load_galfit(lines,'D)', assert_message='Missing psf image, labelled D) in config file')
-    print (np.sum(psf))
 
     try:
         mask = match_line_and_load_galfit(lines,'F)')
     except:
-        mask = np.zeros_like(im)
+        mask = jnp.zeros_like(im)
     zpt = float ( search_start(lines, 'J)')[0][1].split()[1] )
     source_list = search_start(lines, '0)')
     
