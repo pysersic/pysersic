@@ -1,6 +1,7 @@
 
+from __future__ import annotations
 from abc import ABC
-from typing import Iterable, Optional, Union
+from typing import Iterable, Optional, Union, Tuple
 
 import astropy.units as u
 import jax
@@ -507,7 +508,243 @@ class PySersicMultiPrior(BasePrior):
         return all_params
 
 
-def generate_sersic_prior(image_properties,
+class SourceProperties():
+    """
+    A Class used to estimate initial guesses for source properties. If no guesses are provided, then the class will estimate them using the `photutls` package and the `data_properties()` function.
+    """
+    def __init__(self,image: np.array, mask:np.array =None):
+        """Initialize the a SourceProperties object
+
+        Parameters
+        ----------
+        image : np.array
+            science image
+        mask : np.array, optional
+            pixel by pixel mask, by default None
+        """
+        self.image = image 
+        self.mask = mask 
+        
+        if self.mask is not None:
+            self.cat = data_properties(self.image,mask=self.mask.astype(bool))
+            self.image = np.ma.masked_array(self.image, self.mask )
+        else:
+            self.cat = data_properties(self.image)
+        _ = self.measure_properties() 
+
+    def measure_properties(self,**kwargs) -> SourceProperties:
+        """Measure default properties of the source
+
+        Returns
+        -------
+        SourceProperties
+            returns self
+        """
+        self.set_flux_guess(**kwargs)
+        self.set_r_eff_guess(**kwargs)
+        self.set_theta_guess(**kwargs)
+        self.set_position_guess(**kwargs)
+        self.set_sky_guess(**kwargs)
+        return self
+    
+    def set_sky_guess(self,sky_guess: Optional[float] = None,sky_guess_err:Optional[float] = None,n_pix_sample:int = 5)-> SourceProperties:
+        """Measure or set guess for initial sky background level. If no estimate is provided, the median of the n_pix_sample number of pixels around each edge is used
+
+        Parameters
+        ----------
+        sky_guess : Optional[float], optional
+            Initial guess for level of background, by default None
+        sky_guess_err : Optional[float], optional
+            Uncertainity on inital guess, by default None
+        n_pix_sample : int, optional
+            Number of pixels around each edge to use to estimate sky level if neccesary, by default 5
+
+        Returns
+        -------
+        SourceProperties
+            returns self
+        """
+        edge_pixels = np.concatenate((self.image[:n_pix_sample,:],self.image[-n_pix_sample:,:],self.image[:,:n_pix_sample],self.image[:,-n_pix_sample:]),axis=None)
+        median_val = np.median(edge_pixels)
+        if sky_guess is None:
+            self.sky_guess = median_val
+        if sky_guess_err is None:
+            self.sky_guess_err = np.std(edge_pixels)
+        return self
+
+    def set_flux_guess(self,flux_guess: Optional[float] =None,flux_guess_err: Optional[float] = None,**kwargs)-> SourceProperties:
+        """Measure or set guess for initial flux. If no estimate is provided, the flux of the source in estimated as the total flux within the sgmentatated region for the source
+
+        Parameters
+        ----------
+        flux_guess : Optional[float], optional
+            Initial guess for flux, by default None
+        flux_guess_err : Optional[float], optional
+            Uncertainty on initial guess, by default None
+
+        Returns
+        -------
+        SourceProperties
+            returns self
+        """
+        if flux_guess is None:
+            flux_guess = self.cat.segment_flux
+        if flux_guess_err is not None:
+            flux_guess_err = flux_guess_err
+        else:
+            if flux_guess > 0:
+                flux_guess_err = 2*np.sqrt( flux_guess )
+            else:
+                flux_guess_err = np.sqrt(np.abs(flux_guess))
+                flux_guess = 0.
+        
+        self.flux_guess = flux_guess 
+        self.flux_guess_err = flux_guess_err
+        return self 
+    
+    def set_r_eff_guess(self,r_eff_guess:Optional[float] = None, r_eff_guess_err:Optional[float] = None, **kwargs)-> SourceProperties:
+        """Measure or set guess for effective radius. If no estimate is provided, the r_eff of the source in estimated as kron radius
+
+        Parameters
+        ----------
+        r_eff_guess : Optional[float], optional
+            Initial guess for effective radius, by default None
+        r_eff_guess_err : Optional[float], optional
+            Uncertainty on initial guess, by default None
+
+        Returns
+        -------
+        SourceProperties
+            returns self
+        """
+        if r_eff_guess is None:
+            r_eff_guess = self.cat.kron_radius.value
+        
+        if r_eff_guess_err is not None:
+            self.r_eff_guess_err = r_eff_guess_err
+        else:
+            self.r_eff_guess_err = np.sqrt(r_eff_guess) 
+
+        self.r_eff_guess = r_eff_guess
+        return self
+
+    def set_theta_guess(self,theta_guess: Optional[float] = None,**kwargs)-> SourceProperties:
+        """Measure or set guess for initial position angle. If no estimate is provided, the position angle of the source in estimated using the data_properties() function from photutils
+
+        Parameters
+        ----------
+        theta_guess : Optional[float], optional
+            Estimate of the position angle in radians, by default None
+
+        Returns
+        -------
+        SourceProperties
+            returns self
+        """
+
+        if theta_guess is None:
+            theta_guess = self.cat.orientation.to(u.rad).value
+
+        if np.isnan(theta_guess):
+            theta_guess = 0
+        self.theta_guess = theta_guess 
+        return self
+    
+    def set_position_guess(self,position_guess: Optional[Iterable[int,int]]=None,**kwargs)-> SourceProperties:
+        """Measure or set guess for initial position. If no estimate is provided, the position of the source in estimated using the data_properties() function from photutils
+
+        Parameters
+        ----------
+        position_guess : Optional[Iterable[int,int]], optional
+            A 2 element list, tuple or array which contain the x,y pixel values of the inital guess for the centroid, by default None
+
+        Returns
+        -------
+        SourceProperties
+            returns self
+        """
+        if position_guess is None:
+            self.xc_guess = self.cat.centroid_win[0]
+            self.yc_guess = self.cat.centroid_win[1]
+        else:
+            self.xc_guess = position_guess[0]
+            self.yc_guess = position_guess[1]
+        return self
+    
+    def generate_prior(self,
+                profile_type: str,
+                sky_type: Optional[str] = 'none')-> PySersicSourcePrior:
+        """Function to generate default priors based on a given image and profile type
+
+        Parameters
+        ----------
+        profile_type : str
+            Type of profile
+        sky_type : str, default 'none'
+            Type of sky model to use, must be one of: 'none', 'flat', 'tilted-plane'
+        Returns
+        -------
+        dict
+            Dictionary containing numpyro Distribution objects for each parameter
+        """
+        if profile_type == 'sersic':
+            prior_dict = generate_sersic_prior(self, sky_type = sky_type,)
+        
+        elif profile_type == 'doublesersic':
+            prior_dict = generate_doublesersic_prior(self, sky_type = sky_type,)
+
+        elif profile_type == 'pointsource':
+            prior_dict = generate_pointsource_prior(self, sky_type = sky_type,)
+
+        elif profile_type in 'exp':
+            prior_dict = generate_exp_prior(self, sky_type = sky_type,)
+
+        elif profile_type in 'dev':
+            prior_dict = generate_dev_prior(self, sky_type = sky_type,)
+        
+        return prior_dict
+    
+    def visualize(self,figsize: Tuple[float,float]= (6.,6.),cmap:str = 'gray',scale: float = 1.)-> None:
+        """Display a figure summarizing the current guess for the source properties
+
+        Parameters
+        ----------
+        figsize : Tuple[float,float], optional
+            figure, by default (6.,6.)
+        cmap : str, optional
+            color map, by default 'gray'
+        scale : float, optional
+            number of +/- std's at which to clip image, by default 1
+        """
+        if not hasattr(self,'flux_guess'):
+            self.set_flux_guess() 
+        if not hasattr(self,'r_eff_guess'):
+            self.set_r_eff_guess()
+        if not hasattr(self,'theta_guess'):
+            self.set_theta_guess() 
+        if not hasattr(self,'xc_guess'):
+            self.set_position_guess()
+        
+        fig, ax = plt.subplots(figsize=figsize,)
+        if self.mask is not None:
+            image= np.ma.masked_array(self.image,mask=self.mask)
+        else:
+            image = self.image
+        vmin = np.mean(image) - scale*np.std(image)
+        vmax = np.mean(image) + scale*np.std(image)
+        ax.imshow(image,cmap=cmap,origin='lower',vmin=vmin,vmax=vmax)
+        ax.plot(self.xc_guess,self.yc_guess,'x',color='r')
+        
+        dx = 10*self.r_eff_guess*np.cos(self.theta_guess+np.pi/2.)
+        dy = 10*self.r_eff_guess*np.sin(self.theta_guess+np.pi/2.)
+        ax.arrow(self.xc_guess,self.yc_guess,dx=dx,dy=dy,width=0.1,head_width=1)
+        arr = np.linspace(0,2*np.pi,100)
+        x = np.cos(arr) * self.r_eff_guess + self.xc_guess 
+        y = np.sin(arr) * self.r_eff_guess + self.yc_guess 
+        ax.plot(x,y,'r',lw=2)
+        plt.show()
+
+def generate_sersic_prior(image_properties: SourceProperties,
                         sky_type: Optional[str] = 'none',
                         suffix: Optional[str] = '')-> PySersicSourcePrior:
     """ Derive automatic priors for a sersic profile based on an input image.
@@ -537,7 +774,7 @@ def generate_sersic_prior(image_properties,
 
     return prior 
 
-def generate_exp_prior(image_properties,
+def generate_exp_prior(image_properties: SourceProperties,
         sky_type: Optional[str] = 'none',
         suffix: Optional[str] = '')-> PySersicSourcePrior:
     """ Derive automatic priors for a exp or dev profile based on an input image.
@@ -566,7 +803,7 @@ def generate_exp_prior(image_properties,
 
     return prior
 
-def generate_dev_prior(image_properties,
+def generate_dev_prior(image_properties: SourceProperties,
         sky_type: Optional[str] = 'none',
         suffix: Optional[str] = '')-> PySersicSourcePrior:
     """ Derive automatic priors for a exp or dev profile based on an input image.
@@ -595,10 +832,10 @@ def generate_dev_prior(image_properties,
 
     return prior
 
-def generate_doublesersic_prior(image_properties,
+def generate_doublesersic_prior(image_properties: SourceProperties,
         sky_type: Optional[str] = 'none',
         suffix: Optional[str] = '')-> PySersicSourcePrior:
-    """ Derive automatic priors for a double sersic profile based on an input image.
+    """ Derive automatic priors for a double sersic profile based on an input image. Please note that fitting a double sersic is a difficult problem and this is a rather simple recipe to design the priors that may results in poor performance and/or convergence issues. In the future we hope to find a better way to initialize the prior but use with caution for now.
     
     Parameters
     ----------
@@ -641,7 +878,7 @@ def generate_doublesersic_prior(image_properties,
 
     return prior
 
-def generate_pointsource_prior(image_properties,
+def generate_pointsource_prior(image_properties: SourceProperties,
         sky_type: Optional[str] = 'none',
         suffix: Optional[str] = '')-> PySersicSourcePrior:
     """ Derive automatic priors for a pointsource based on an input image.
@@ -664,144 +901,10 @@ def generate_pointsource_prior(image_properties,
     
     prior.set_gaussian_prior('flux',image_properties.flux_guess,image_properties.flux_guess_err)
     
-
     prior.set_gaussian_prior('xc', image_properties.xc_guess, 1)
     prior.set_gaussian_prior('yc', image_properties.yc_guess, 1)
 
     return prior
 
-
-
-class SourceProperties():
-    def __init__(self,image,mask=None):
-        self.image = image 
-        self.mask = mask 
-        
-        if self.mask is not None:
-            self.cat = data_properties(self.image,mask=self.mask.astype(bool))
-            self.image = np.ma.masked_array(self.image, self.mask )
-        else:
-            self.cat = data_properties(self.image)
-        _ = self.measure_properties() 
-
-    def measure_properties(self,**kwargs):
-        self.set_flux_guess(**kwargs)
-        self.set_r_eff_guess(**kwargs)
-        self.set_theta_guess(**kwargs)
-        self.set_position_guess(**kwargs)
-        self.set_sky_guess(**kwargs)
-        return self
-    
-    def set_sky_guess(self,sky_guess=None,sky_guess_err=None,n_pix_sample=5):
-        edge_pixels = np.concatenate((self.image[:n_pix_sample,:],self.image[-n_pix_sample:,:],self.image[:,:n_pix_sample],self.image[:,-n_pix_sample:]),axis=None)
-        median_val = np.median(edge_pixels)
-        if sky_guess is None:
-            self.sky_guess = median_val
-        if sky_guess_err is None:
-            self.sky_guess_err = np.std(edge_pixels)
-        return self
-
-    def set_flux_guess(self,flux_guess=None,flux_guess_err = None,**kwargs):
-        if flux_guess is None:
-            flux_guess = self.cat.segment_flux
-        if flux_guess_err is not None:
-            flux_guess_err = flux_guess_err
-        else:
-            if flux_guess > 0:
-                flux_guess_err = 2*np.sqrt( flux_guess )
-            else:
-                flux_guess_err = np.sqrt(np.abs(flux_guess))
-                flux_guess = 0.
-        
-        self.flux_guess = flux_guess 
-        self.flux_guess_err = flux_guess_err
-        return self 
-    
-    def set_r_eff_guess(self,r_eff_guess=None,**kwargs):
-        if r_eff_guess is None:
-            r_eff_guess = self.cat.kron_radius.value
-    
-        self.r_eff_guess = r_eff_guess
-        self.r_eff_guess_err = np.sqrt(r_eff_guess) 
-        return self
-
-    def set_theta_guess(self,theta_guess=None,**kwargs):
-        if theta_guess is None:
-            theta_guess = self.cat.orientation.to(u.rad).value
-
-        if np.isnan(theta_guess):
-            theta_guess = 0
-        self.theta_guess = theta_guess 
-        return self
-    def set_position_guess(self,position_guess=None,**kwargs):
-        if position_guess is None:
-            self.xc_guess = self.cat.centroid_win[0]
-            self.yc_guess = self.cat.centroid_win[1]
-        else:
-            self.xc_guess = position_guess[0]
-            self.yc_guess = position_guess[1]
-        return self
-    
-    def generate_prior(self,
-                profile_type: str,
-                sky_type: Optional[str] = 'none')-> PySersicSourcePrior:
-        """Function to generate default priors based on a given image and profile type
-
-        Parameters
-        ----------
-        profile_type : str
-            Type of profile
-        sky_type : str, default 'none'
-            Type of sky model to use, must be one of: 'none', 'flat', 'tilted-plane'
-        Returns
-        -------
-        dict
-            Dictionary containing numpyro Distribution objects for each parameter
-        """
-        if profile_type == 'sersic':
-            prior_dict = generate_sersic_prior(self, sky_type = sky_type,)
-        
-        elif profile_type == 'doublesersic':
-            prior_dict = generate_doublesersic_prior(self, sky_type = sky_type,)
-
-        elif profile_type == 'pointsource':
-            prior_dict = generate_pointsource_prior(self, sky_type = sky_type,)
-
-        elif profile_type in 'exp':
-            prior_dict = generate_exp_prior(self, sky_type = sky_type,)
-
-        elif profile_type in 'dev':
-            prior_dict = generate_dev_prior(self, sky_type = sky_type,)
-        
-        return prior_dict
-    
-    def visualize(self,figsize=(6,6),cmap='gray',scale=1):
-        if not hasattr(self,'flux_guess'):
-            self.set_flux_guess() 
-        if not hasattr(self,'r_eff_guess'):
-            self.set_r_eff_guess()
-        if not hasattr(self,'theta_guess'):
-            self.set_theta_guess() 
-        if not hasattr(self,'xc_guess'):
-            self.set_position_guess()
-        
-        fig, ax = plt.subplots(figsize=figsize,)
-        if self.mask is not None:
-            image= np.ma.masked_array(self.image,mask=self.mask)
-        else:
-            image = self.image
-        vmin = np.mean(image) - scale*np.std(image)
-        vmax = np.mean(image) + scale*np.std(image)
-        ax.imshow(image,cmap=cmap,origin='lower',vmin=vmin,vmax=vmax)
-        ax.plot(self.xc_guess,self.yc_guess,'x',color='r')
-        
-        dx = 10*self.r_eff_guess*np.cos(self.theta_guess+np.pi/2.)
-        dy = 10*self.r_eff_guess*np.sin(self.theta_guess+np.pi/2.)
-        ax.arrow(self.xc_guess,self.yc_guess,dx=dx,dy=dy,width=0.1,head_width=1)
-        arr = np.linspace(0,2*np.pi,100)
-        x = np.cos(arr) * self.r_eff_guess + self.xc_guess 
-        y = np.sin(arr) * self.r_eff_guess + self.yc_guess 
-        ax.plot(x,y,'r',lw=2)
-        plt.show()
 
 
