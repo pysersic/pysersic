@@ -6,7 +6,7 @@ setuptools.setup(
     author="Imad Pasha & Tim Miller",
     author_email="imad.pasha@yale.edu",
     description="A Tool for fitting sersic profiles in python",
-    packages=["pysersic","pysersic/utils"],
+    packages=["pysersic",],
     install_requires=['numpy',
         'scipy',
         'matplotlib',
