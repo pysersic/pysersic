@@ -107,6 +107,7 @@ class BaseFitter(ABC):
                 sampler_kwargs: Optional[dict] ={},
                 mcmc_kwargs: Optional[dict] = {},
                 return_model: Optional[bool] = True,
+                reparam: Optional[bool] = False,
                 rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3)     
         ) -> pandas.DataFrame:
         """ Perform inference using a NUTS sampler
@@ -135,8 +136,15 @@ class BaseFitter(ABC):
         pandas.DataFrame
             ArviZ summary of posterior
         """
+
         model =  self.build_model(return_model = return_model)
-        
+        if reparam:
+            guide = infer.autoguide.AutoDiagonalNormal(model)
+            svi_kernel = infer.SVI(model,guide, optim.Adam(0.05), loss = infer.Trace_ELBO(4))
+            svi_res = train_numpyro_svi_early_stop(svi_kernel, patience= 100,num_round = 1, lr_init=5e-3)
+            neutra = numpyro.infer.reparam.NeuTraReparam(guide, svi_res.params)
+            model = neutra.reparam(model)
+
         self.sampler =infer.MCMC(infer.NUTS(model,init_strategy=init_strategy, **sampler_kwargs),num_chains=num_chains, num_samples=num_samples, num_warmup=num_warmup,  **mcmc_kwargs)
         self.sampler.run(rkey)
         self.sampling_results = PySersicResults(data=self.data,rms=self.rms,psf=self.psf,mask=self.mask,loss_func=self.loss_func,renderer=self.renderer)
@@ -266,8 +274,8 @@ class BaseFitter(ABC):
         """
         assert method in ['laplace','svi-flow']
         if method=='laplace':
-            train_kwargs = dict(patience = 250)
-            guide_func = partial(infer.autoguide.AutoLaplaceApproximation, init_loc_fn = infer.init_to_sample )
+            train_kwargs = dict(patience = 250, max_train = 10000)
+            guide_func = partial(infer.autoguide.AutoLaplaceApproximation, init_loc_fn = infer.init_to_median )
             results = self._train_SVI(guide_func,method=method, train_kwargs=train_kwargs, return_model = return_model, rkey=rkey)
         elif method=='svi-flow':
             train_kwargs = dict(patience = 500, max_train = 20000)

@@ -347,7 +347,7 @@ class PySersicResults():
         if self.runtype == 'svi':
             tree['svi_method_used'] = self.svi_method_used
         tree['prior_info'] = self.prior.__str__()
-        tree['best_model'] = np.array(self.get_median_model())
+        tree['best_model'] = np.array(self.get_median_model()[0])
         tree['posterior'] = self.idata.to_dict()['posterior']
         for i in tree['posterior']:
             i = np.array(i)

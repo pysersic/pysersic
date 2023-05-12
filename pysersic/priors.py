@@ -547,7 +547,7 @@ class SourceProperties():
         self.set_sky_guess(**kwargs)
         return self
     
-    def set_sky_guess(self,sky_guess: Optional[float] = None,sky_guess_err:Optional[float] = None,n_pix_sample:int = 5)-> SourceProperties:
+    def set_sky_guess(self,sky_guess: Optional[float] = None,sky_guess_err:Optional[float] = None,n_pix_sample:int = 5, **kwargs)-> SourceProperties:
         """Measure or set guess for initial sky background level. If no estimate is provided, the median of the n_pix_sample number of pixels around each edge is used
 
         Parameters
@@ -569,7 +569,7 @@ class SourceProperties():
         if sky_guess is None:
             self.sky_guess = median_val
         if sky_guess_err is None:
-            self.sky_guess_err = np.std(edge_pixels)
+            self.sky_guess_err = 2*np.std(edge_pixels)/np.sqrt( np.prod(edge_pixels.shape) )
         return self
 
     def set_flux_guess(self,flux_guess: Optional[float] =None,flux_guess_err: Optional[float] = None,**kwargs)-> SourceProperties:
@@ -595,7 +595,7 @@ class SourceProperties():
             if flux_guess > 0:
                 flux_guess_err = 2*np.sqrt( flux_guess )
             else:
-                flux_guess_err = np.sqrt(np.abs(flux_guess))
+                flux_guess_err = 2*np.sqrt(np.abs(flux_guess))
                 flux_guess = 0.
         
         self.flux_guess = flux_guess 
@@ -603,7 +603,7 @@ class SourceProperties():
         return self 
     
     def set_r_eff_guess(self,r_eff_guess:Optional[float] = None, r_eff_guess_err:Optional[float] = None, **kwargs)-> SourceProperties:
-        """Measure or set guess for effective radius. If no estimate is provided, the r_eff of the source in estimated as kron radius
+        """Measure or set guess for effective radius. If no estimate is provided, the r_eff of the source in estimated using photutils
 
         Parameters
         ----------
@@ -618,12 +618,12 @@ class SourceProperties():
             returns self
         """
         if r_eff_guess is None:
-            r_eff_guess = self.cat.kron_radius.value
+            r_eff_guess = self.cat.fluxfrac_radius(0.5).to(u.pixel).value
         
         if r_eff_guess_err is not None:
             self.r_eff_guess_err = r_eff_guess_err
         else:
-            self.r_eff_guess_err = np.sqrt(r_eff_guess) 
+            self.r_eff_guess_err = 2*np.sqrt(r_eff_guess) 
 
         self.r_eff_guess = r_eff_guess
         return self
@@ -768,7 +768,7 @@ def generate_sersic_prior(image_properties: SourceProperties,
     prior.set_truncated_gaussian_prior('r_eff', image_properties.r_eff_guess,image_properties.r_eff_guess_err, low = 0.5)
     prior.set_uniform_prior('ellip', 0, 0.9)
     prior.set_custom_prior('theta', dist.VonMises(loc = image_properties.theta_guess,concentration=2), reparam= infer.reparam.CircularReparam() )
-    prior.set_uniform_prior('n', 0.5, 8)
+    prior.set_uniform_prior('n', 0.65, 8)
     prior.set_gaussian_prior('xc', image_properties.xc_guess, 1)
     prior.set_gaussian_prior('yc', image_properties.yc_guess, 1)
 
@@ -869,8 +869,8 @@ def generate_doublesersic_prior(image_properties: SourceProperties,
     prior.set_uniform_prior('ellip_1', 0,0.9)
     prior.set_uniform_prior('ellip_2', 0,0.9)
 
-    prior.set_truncated_gaussian_prior('n_1',4,1, low = 0.5,high = 8)
-    prior.set_truncated_gaussian_prior('n_2',1,1, low = 0.5,high = 8)
+    prior.set_truncated_gaussian_prior('n_1',4,1, low = 0.65,high = 8)
+    prior.set_truncated_gaussian_prior('n_2',1,1, low = 0.65,high = 8)
 
     prior.set_gaussian_prior('xc', image_properties.xc_guess, 1)
     prior.set_gaussian_prior('yc', image_properties.yc_guess, 1)

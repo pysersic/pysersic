@@ -29,16 +29,12 @@ def test_point_source(renderer,pos):
 def test_sersic(renderer,pos,re,n,ellip,theta):
     renderer_test = renderer((150,150), psf)
     flux = 10
-    #Calcualte fraction of flux contained in image
+    #Calculate fraction of flux contained in image
     int_test = partial(render_sersic_2d, xc = pos[0],yc = pos[1], flux = 10, r_eff = re, n = n, ellip = ellip,theta = theta)
     to_int = lambda x,y: float(int_test(x,y))
     lo_fun = lambda x: 0.
     hi_fun = lambda x: 150. 
     flux_int,_ = dblquad(to_int, 0.,150., lo_fun,hi_fun,epsrel=5.e-3)
-    
-    #bn = 1.992*n -0.3271
-    #frac = gammainc(2*n, bn*(50./re)**(1./n))
-    #flux_int = frac*flux
     
     im = renderer_test.render_sersic(pos[0],pos[1],flux,re,n,ellip,theta)
     total = float( jnp.sum(im) )
@@ -60,7 +56,7 @@ def test_exp_dev(renderer,prof,pos,re,ellip,theta):
         im = renderer_test.render_dev(pos[0],pos[1],flux,re,ellip,theta)
         n=4.
 
-    #Calcualte fraction of flux contained in image
+    #Calculate fraction of flux contained in image
     int_test = partial(render_sersic_2d, xc = pos[0],yc = pos[1], flux = 10, r_eff = re, n = n, ellip = ellip,theta = theta)
     to_int = lambda x,y: float(int_test(x,y))
 
@@ -68,10 +64,6 @@ def test_exp_dev(renderer,prof,pos,re,ellip,theta):
     hi_fun = lambda x: 150. 
     flux_int,_ = dblquad(to_int, 0.,150., lo_fun,hi_fun,epsrel=5.e-3)
 
-    #bn = 1.992*n -0.3271
-    #frac = gammainc(2*n, bn*(50./re)**(1./n))
-    #flux_int = frac*flux
-    
     total = float( jnp.sum(im) )
     assert pytest.approx(flux_int, rel = err_tol) == total
 

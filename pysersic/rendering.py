@@ -6,6 +6,7 @@ import jax.numpy as jnp
 import numpy as np
 from jax import jit
 from scipy.special import comb
+from functools import partial
 
 base_profile_types = ['sersic','doublesersic','pointsource','exp','dev']
 base_profile_params =dict( 
@@ -434,7 +435,8 @@ class FourierRenderer(BaseRenderer):
             frac_start: Optional[float] = 1e-2,
             frac_end: Optional[float] = 15., 
             n_sigma: Optional[int] = 15, 
-            percision: Optional[int] = 10)-> None:
+            precision: Optional[int] = 10,
+            use_poly_fit_amps: Optional[bool] = True)-> None:
         """Initialize a Fourier renderer class
 
         Parameters
@@ -444,25 +446,50 @@ class FourierRenderer(BaseRenderer):
         pixel_PSF : jax.numpy.array
             Pixelized version of the PSF
         frac_start : Optional[float], optional
-            Fraction of r_eff for the smallest Gaussian component, by default 0.02
+            Fraction of r_eff for the smallest Gaussian component, by default 0.01
         frac_end : Optional[float], optional
             Fraction of r_eff for the largest Gaussian component, by default 15.
         n_sigma : Optional[int], optional
-            Number of Gaussian Components, by default 13
-        percision : Optional[int], optional
-            percision value used in calculating Gaussian components, see Shajib (2019) for more details, by default 10
+            Number of Gaussian Components, by default 15
+        precision : Optional[int], optional
+            precision value used in calculating Gaussian components, see Shajib (2019) for more details, by default 10
+        use_poly_fit_amps: Optional[bool]
+            If True, instead of performing the direct calculation in Shajib (2019) at each iteration, a polynomial approximation is fit and used. The amplitudes of each gaussian component amplitudes as a function of Sersic index are fit with a polynomial. This smooth approximation is then used at each interval. While this adds a a little extra to the renderering error budget (roughly 1\%) but is much more numerically stable owing to the smooth gradients. If this matters for you then set this to False and make sure to enable jax's 64 bit capabilities which we find helps the stability.
         """
         super().__init__(im_shape, pixel_PSF)
         self.frac_start = frac_start
         self.frac_end = frac_end
         self.n_sigma = n_sigma
-        self.percision = percision
+        self.precision = precision
 
-        self.etas,self.betas = calculate_etas_betas(self.percision)
+        self.etas,self.betas = calculate_etas_betas(self.precision)
+
+        if use_poly_fit_amps:
+
+            #Set up grid of amplitudes at different values of n
+            log_n_ax = jnp.logspace(jnp.log10(.65),jnp.log10(8), num = 100)
+            amps_log_n = jax.vmap( lambda n: sersic_gauss_decomp(1.,1.,n,self.etas,self.betas,self.frac_start,self.frac_end,self.n_sigma)[0] ) (log_n_ax)
+
+            #Fit polynomial for smooth interpolation
+            amps_log_n_pfits = jnp.polyfit(np.log10(log_n_ax),amps_log_n,10.)
+
+            def get_amps_sigmas(flux,r_eff,n):
+                amps_norm = jnp.polyval(amps_log_n_pfits, jnp.log10(n))
+                amps = amps_norm*flux
+                sigmas = jnp.logspace(jnp.log10(r_eff*self.frac_start),jnp.log10(r_eff*self.frac_end),num = self.n_sigma)
+                return amps,sigmas
+            self.get_amps_sigmas = jax.jit(get_amps_sigmas)
+        else:
+            if not jax.config.jax_enable_x64:
+                print ("!! WARNING !! - FourierRenderer can be numerically unstable when using jax's default 32 bit. Please either enable jax 64 bit or set 'use_poly_amps' = True in the renderer kwargs")
+            def get_amps_sigmas(flux,r_eff,n):
+                return sersic_gauss_decomp(flux, r_eff, n, self.etas, self.betas, self.frac_start*r_eff, self.frac_end*r_eff, self.n_sigma)
+            self.get_amps_sigmas = jax.jit(get_amps_sigmas)
+            
 
         #Jit compile function to render sersic profile in Fourier space
         def render_sersic_mog_fourier(xc,yc, flux, r_eff, n,ellip, theta):
-            amps,sigmas = sersic_gauss_decomp(flux, r_eff, n, self.etas, self.betas, self.frac_start, self.frac_end, self.n_sigma)
+            amps,sigmas = self.get_amps_sigmas(flux, r_eff, n)
             q = 1.-ellip
             Fgal = render_gaussian_fourier(self.FX,self.FY, amps,sigmas,xc,yc, theta,q)
             return Fgal
@@ -629,7 +656,7 @@ class HybridRenderer(BaseRenderer):
     """
     Class to render sources based on the hybrid rendering scheme introduced in Lang (2020). This avoids some of the artifacts introduced by rendering sources purely in Fourier space. Sersic profiles are modeled as a series of Gaussian following Shajib (2019) (https://arxiv.org/abs/1906.08263) and the implementation in lenstronomy (https://github.com/lenstronomy/lenstronomy/blob/main/lenstronomy/LensModel/Profiles/gauss_decomposition.py).
 
-    Our scheme is implemented slightly differently than Lang (2020), specifically in how it chooses which gaussian components to render in Fourier vs. Real space. Lang (2020) employs a cutoff based on distance to the edge of the image. However given some of jax's limitation with dynamic shapes (see more here -> https://jax.readthedocs.io/en/latest/notebooks/Common_Gotchas_in_JAX.html#dynamic-shapes), we have not implemented that specific criterion. Instead we use a simpler critera where the user must decide how many components to render in real space, starting from the largest ones. While this is not ideal in all circumstances it still overcomes many of the issues of rendering purely in fourier space discussed in Lang (2020).
+    Our scheme is implemented slightly differently than Lang (2020), specifically in how it chooses which gaussian components to render in Fourier vs. Real space. Lang (2020) employs a cutoff based on distance to the edge of the image. However given some of jax's limitation with dynamic shapes (see more here -> https://jax.readthedocs.io/en/latest/notebooks/Common_Gotchas_in_JAX.html#dynamic-shapes), we have not implemented that specific criterion. Instead we use a simpler version where the user must decide how many components to render in real space, starting from the largest ones. While this is not ideal in all circumstances it still overcomes many of the issues of rendering purely in fourier space discussed in Lang (2020).
     """
     def __init__(self, 
             im_shape: Iterable, 
@@ -638,8 +665,9 @@ class HybridRenderer(BaseRenderer):
             frac_end: Optional[float] = 15., 
             n_sigma: Optional[int] = 15, 
             num_pixel_render: Optional[int] = 3,
-            percision: Optional[int] = 10)-> None:
-        """Initialize a  HyrbridRenderer class
+            precision: Optional[int] = 10,
+            use_poly_fit_amps: Optional[bool] = True)-> None:
+        """Initialize a  HybridRenderer class
 
         Parameters
         ----------
@@ -654,15 +682,17 @@ class HybridRenderer(BaseRenderer):
         n_sigma : Optional[int], optional
             Number of Gaussian Components, by default 13
         num_pixel_Render : Optional[int], optional
-            Numeber of components to render in pixel space, counts back from largest component
-        percision : Optional[int], optional
-            percision value used in calculating Gaussian components, see Shajib (2019) for more details, by default 10
+            Number of components to render in pixel space, counts back from largest component
+        precision : Optional[int], optional
+            precision value used in calculating Gaussian components, see Shajib (2019) for more details, by default 10
+        use_poly_fit_amps: Optional[bool]
+            If True, instead of performing the direct calculation in Shajib (2019) at each iteration, a polynomial approximation is fit and used. The amplitudes of each gaussian component amplitudes as a function of Sersic index are fit with a polynomial. This smooth approximation is then used at each interval. While this adds a a little extra to the renderering error budget (roughly 1\%) but is much more numerically stable owing to the smooth gradients. If this matters for you then set this to False and make sure to enable jax's 64 bit capabilities which we find helps the stability.
         """
         super().__init__(im_shape, pixel_PSF)
         self.frac_start = frac_start
         self.frac_end = frac_end
         self.n_sigma = n_sigma
-        self.percision = percision
+        self.precision = precision
         self.num_pixel_render = num_pixel_render
         self.w_real = jnp.arange(self.n_sigma - self.num_pixel_render, self.n_sigma, dtype=jnp.int32)
         self.w_fourier = jnp.arange(self.n_sigma - self.num_pixel_render, dtype=jnp.int32)
@@ -672,11 +702,33 @@ class HybridRenderer(BaseRenderer):
         sig_y = jnp.sqrt( (self.pixel_PSF*(psf_Y)**2).sum()/self.pixel_PSF.sum() - psf_Y.mean()**2 )
         self.sig_psf_approx = 0.5*(sig_x + sig_y)
 
-        self.etas,self.betas = calculate_etas_betas(self.percision)
+        self.etas,self.betas = calculate_etas_betas(self.precision)
 
+        if use_poly_fit_amps:
+
+            #Set up grid of amplitudes at different values of n
+            log_n_ax = jnp.logspace(jnp.log10(.65),jnp.log10(8), num = 100)
+            amps_log_n = jax.vmap( lambda n: sersic_gauss_decomp(1.,1.,n,self.etas,self.betas,self.frac_start,self.frac_end,self.n_sigma)[0] ) (log_n_ax)
+
+            #Fit polynomial for smooth interpolation
+            amps_log_n_pfits = jnp.polyfit(np.log10(log_n_ax),amps_log_n,10.)
+
+            def get_amps_sigmas(flux,r_eff,n):
+                amps_norm = jnp.polyval(amps_log_n_pfits, jnp.log10(n))
+                amps = amps_norm*flux
+                sigmas = jnp.logspace(jnp.log10(r_eff*self.frac_start),jnp.log10(r_eff*self.frac_end),num = self.n_sigma)
+                return amps,sigmas
+            self.get_amps_sigmas = jax.jit(get_amps_sigmas)
+        else:
+            if not jax.config.jax_enable_x64:
+                print ("!! WARNING !! - HybridRenderer can be numerically unstable when using jax's default 32 bit. Please either enable jax 64 bit or set 'use_poly_amps' = True in the renderer kwargs")
+            def get_amps_sigmas(flux,r_eff,n):
+                return sersic_gauss_decomp(flux, r_eff, n, self.etas, self.betas, self.frac_start*r_eff, self.frac_end*r_eff, self.n_sigma)
+            self.get_amps_sigmas = jax.jit(get_amps_sigmas)
+            
 
         def render_sersic_hybrid(xc,yc, flux, r_eff, n,ellip, theta):
-            amps,sigmas = sersic_gauss_decomp(flux, r_eff, n, self.etas, self.betas, self.frac_start, self.frac_end, self.n_sigma)
+            amps,sigmas = self.get_amps_sigmas(flux, r_eff, n)
             
             q = 1.-ellip
 
@@ -1052,31 +1104,31 @@ def render_sersic_2d(X: jax.numpy.array,
     out = amplitude * jnp.exp(-bn * (z ** (1 / n) - 1)) / (1.-ellip)
     return out
 
-def calculate_etas_betas(percision: int)-> Tuple[jax.numpy.array, jax.numpy.array]:
+def calculate_etas_betas(precision: int)-> Tuple[jax.numpy.array, jax.numpy.array]:
     """Calculate the weights and nodes for the Gaussian decomposition described in Shajib (2019) (https://arxiv.org/abs/1906.08263)
 
     Parameters
     ----------
-    percision : int
-        Percision, higher number implies more percise decomposition but more nodes. Effective upper limit is 12 for 32 bit numbers, 27 for 64 bit numbers.
+    precision : int
+        Precision, higher number implies more precise decomposition but more nodes. Effective upper limit is 12 for 32 bit numbers, 27 for 64 bit numbers.
 
     Returns
     -------
     Tuple[jax.numpy.array, jax.numpy.array]
         etas and betas array to be use in gaussian decomposition
     """
-    kes = jnp.arange(2 * percision + 1)
-    betas = jnp.sqrt(2 * percision * jnp.log(10) / 3. + 2. * 1j * jnp.pi * kes)
-    epsilons = jnp.zeros(2 * percision + 1)
+    kes = jnp.arange(2 * precision + 1)
+    betas = jnp.sqrt(2 * precision * jnp.log(10) / 3. + 2. * 1j * jnp.pi * kes)
+    epsilons = jnp.zeros(2 * precision + 1)
 
     epsilons = epsilons.at[0].set(0.5)
-    epsilons = epsilons.at[1:percision + 1].set(1.)
-    epsilons = epsilons.at[-1].set(1 / 2. ** percision)
+    epsilons = epsilons.at[1:precision + 1].set(1.)
+    epsilons = epsilons.at[-1].set(1 / 2. ** precision)
 
-    for k in range(1, percision):
-        epsilons = epsilons.at[2 * percision - k].set(epsilons[2 * percision - k + 1] + 1 / 2. ** percision * comb(percision, k) )
+    for k in range(1, precision):
+        epsilons = epsilons.at[2 * precision - k].set(epsilons[2 * precision - k + 1] + 1 / 2. ** precision * comb(precision, k) )
 
-    etas = jnp.array( (-1.) ** kes * epsilons * 10. ** (percision / 3.) * 2. * jnp.sqrt(2*jnp.pi) )
+    etas = jnp.array( (-1.) ** kes * epsilons * 10. ** (precision / 3.) * 2. * jnp.sqrt(2*jnp.pi) )
     betas = jnp.array(betas)
     return etas,betas
 
@@ -1086,8 +1138,8 @@ def sersic_gauss_decomp(
         n:float, 
         etas: jax.numpy.array, 
         betas:jax.numpy.array, 
-        frac_start: float, 
-        frac_end: float, 
+        sigma_start: float, 
+        sigma_end: float, 
         n_comp: int)-> Tuple[jax.numpy.array, jax.numpy.array]:
     """Calculate a gaussian decomposition of a given sersic profile, following Shajib (2019) (https://arxiv.org/abs/1906.08263)
 
@@ -1103,10 +1155,10 @@ def sersic_gauss_decomp(
         Weights for decomposition, can be calcualted using pysersic.rendering_utils.calculate_etas_betas
     betas : jax.numpy.array
         Nodes for decomposition, can be calcualted using pysersic.rendering_utils.calculate_etas_betas
-    frac_start : float
-        Fraction of re for the smallest Gaussian component
-    frac_end : float
-        Fraction of re for the largest Gaussian component
+    sigma_start : float
+        width for the smallest Gaussian component
+    sigma_end : float
+         width for the largest Gaussian component
     n_comp : int
         Number of Gaussian components
 
@@ -1115,11 +1167,9 @@ def sersic_gauss_decomp(
     Tuple[jax.numpy.array, jax.numpy.array]
         Amplitudes and sigmas of Gaussian decomposition
     """
-    sigma_start = re*frac_start
-    sigma_end = re*frac_end
     sigmas = jnp.logspace(jnp.log10(sigma_start),jnp.log10(sigma_end),num = n_comp)
 
-    f_sigmas = jnp.sum(etas * sersic1D(jnp.outer(sigmas,betas),flux,re,n).real,  axis=1)
+    f_sigmas = jnp.sum( etas * sersic1D(jnp.outer(sigmas,betas),flux,re,n).real,  axis=1)
 
     del_log_sigma = jnp.abs(jnp.diff(jnp.log(sigmas)).mean())
 
