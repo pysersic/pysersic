@@ -1,3 +1,4 @@
+![pysersic logo featuring a spiral s-galaxy as the S](misc/pysersic.png)
 # pysersic
 Code for fitting sersic profiles to galaxy images using bayesian inference in python accelerated using `jax`. 
 
