@@ -6,12 +6,31 @@
 Welcome to pysersic's documentation!
 ====================================
 
+Stuff about license and JOSS paper and maybe a super basic like three line example?
+
 .. toctree::
    :maxdepth: 1
-   :caption: Contents:
-   
+   :caption: Guide:
+
+   install
+   issues
+   rendering
+   inference
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Examples:
+
    example-fit
+   multi-source-fitting
+   manual-priors
+
+.. toctree::
+   :maxdepth: 1
+   :caption: API info:
+   
    API-Summary
+
 Indices and tables
 ==================
 

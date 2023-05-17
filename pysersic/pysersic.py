@@ -107,7 +107,6 @@ class BaseFitter(ABC):
                 sampler_kwargs: Optional[dict] ={},
                 mcmc_kwargs: Optional[dict] = {},
                 return_model: Optional[bool] = True,
-                reparam: Optional[bool] = False,
                 rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3)     
         ) -> pandas.DataFrame:
         """ Perform inference using a NUTS sampler
@@ -138,13 +137,6 @@ class BaseFitter(ABC):
         """
 
         model =  self.build_model(return_model = return_model)
-        if reparam:
-            guide = infer.autoguide.AutoDiagonalNormal(model)
-            svi_kernel = infer.SVI(model,guide, optim.Adam(0.05), loss = infer.Trace_ELBO(4))
-            svi_res = train_numpyro_svi_early_stop(svi_kernel, patience= 100,num_round = 1, lr_init=5e-3)
-            neutra = numpyro.infer.reparam.NeuTraReparam(guide, svi_res.params)
-            model = neutra.reparam(model)
-
         self.sampler =infer.MCMC(infer.NUTS(model,init_strategy=init_strategy, **sampler_kwargs),num_chains=num_chains, num_samples=num_samples, num_warmup=num_warmup,  **mcmc_kwargs)
         self.sampler.run(rkey)
         self.sampling_results = PySersicResults(data=self.data,rms=self.rms,psf=self.psf,mask=self.mask,loss_func=self.loss_func,renderer=self.renderer)
@@ -229,7 +221,7 @@ class BaseFitter(ABC):
         """
         model_cur = self.build_model(return_model=return_model)
         autoguide_map = infer.autoguide.AutoDelta(model_cur, init_loc_fn= infer.init_to_median)
-        train_kwargs = dict(lr_init = 0.01, num_round = 3,frac_lr_decrease  = 0.1, patience = 250, optimizer = optim.Adam)
+        train_kwargs = dict(lr_init = 0.01, num_round = 3,frac_lr_decrease  = 0.1, patience = 250, optimizer = optim.Adam, max_train = int(1e4))
         svi_kernel = SVI(model_cur,autoguide_map, optim.Adam(0.01),loss=Trace_ELBO())
         
         res = train_numpyro_svi_early_stop(svi_kernel,rkey=rkey, **train_kwargs)
