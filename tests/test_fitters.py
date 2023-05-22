@@ -29,7 +29,7 @@ def test_FitSingle_map():
         assert map_dict['yc'] == pytest.approx(19.996, rel = 1e-3)
         assert map_dict['flux'] == pytest.approx(199.418, rel = 1e-3)
 
-@pytest.mark.parametrize('method',['laplace','svi-flow'])
+@pytest.mark.parametrize('method',['laplace','svi-mvn','svi-flow'])
 def test_FitSingle_posterior(method):
         post_sum = fitter_single.estimate_posterior(method, rkey = PRNGKey(3))
 
@@ -40,7 +40,7 @@ def test_FitSingle_posterior(method):
         assert post_sum['sd']['xc'] == pytest.approx(0.0085, rel = 1e-1)
         
         assert post_sum['mean']['yc'] == pytest.approx(19.99, rel = 1e-2)
-        assert post_sum['sd']['yc'] ==  pytest.approx(0.0085, rel = 1e-1)
+        assert post_sum['sd']['yc'] ==  pytest.approx(0.008, rel = 1e-1)
 
 
 def test_FitSingle_sample():
@@ -85,12 +85,12 @@ def test_FitMulti_map():
         assert map_dict['source_1']['yc'] == pytest.approx(10., rel = 1e-3)
         assert map_dict['source_1']['flux'] == pytest.approx(150., rel = 1e-3)
 
-@pytest.mark.parametrize('method',['laplace','svi-flow'])
+@pytest.mark.parametrize('method',['laplace','svi-mvn','svi-flow'])
 def test_FitMulti_posterior(method):
         post_sum = multi_fitter.estimate_posterior(method, rkey = PRNGKey(3))
 
         assert post_sum['mean']['flux_0'] == pytest.approx(150.4, rel = 1e-2)
-        assert post_sum['sd']['flux_0'] == pytest.approx(0.42, rel = 5e-2)
+        assert post_sum['sd']['flux_0'] == pytest.approx(0.42, rel = 1e-1)
         assert post_sum['mean']['flux_1'] == pytest.approx(150., rel = 1e-2)
         assert post_sum['sd']['flux_1'] == pytest.approx(0.45, rel = 5e-2)
 

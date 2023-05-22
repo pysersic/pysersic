@@ -250,9 +250,11 @@ class BaseFitter(ABC):
         """Estimate the posterior using a method other than MCMC sampling. Generally faster than MCMC, but could be less accurate.
         Current Options are:
         - 'laplace'
-            - Uses the Laplace approximation, which finds the MAP and then uses a Gaussian approximation to the posterior. The covariance matrix is calculated using the Hessian of the log posterior at the MAP.
+            - Uses the Laplace approximation, which finds the MAP and then uses a Gaussian approximation to the posterior. The covariance matrix is calculated using the Hessian of the log posterior at the MAP. Generally the fastest method but can lead to numerical problems, especially for fitting several (~> 5) sources since this involves inverting a large matrix.
+        - 'svi-mvn'
+            - Use variational inference to fit a multivariate normal distribution to the posterior. In practice should give similar results to 'laplace', as both assume the posterior is a multivariate Gaussian but is trained differently and generally less susceptible to the numerical issues discussed above.
         - 'svi-flow'
-            - Uses a normalizing flow (currently a BNAF, https://arxiv.org/abs/1904.04676) to approximate the posterior. This is more flexible than the Laplace approximation, but is slower to train. Optimization can be inconsistet so use and interpret with caution. Best to cross-reference with sample on tests cases.
+            - Uses a neural flow (currently a BNAF, https://arxiv.org/abs/1904.04676) to approximate the posterior. This is more flexible than the two methods above as the flow is a more flexible representation of the posterior which can capture non-Gaussian behavior.However it is slower to train. Also optimization can be inconsistent so use and interpret with caution. Best to cross-reference with sample on tests cases.
 
         Parameters
         ----------
@@ -264,7 +266,7 @@ class BaseFitter(ABC):
             rng key, by default jax.random.PRNGKey(6)
         
         """
-        assert method in ['laplace','svi-flow']
+        assert method in ['laplace','svi-flow','svi-mvn']
         if method=='laplace':
             train_kwargs = dict(patience = 250, max_train = 10000)
             guide_func = partial(infer.autoguide.AutoLaplaceApproximation, init_loc_fn = infer.init_to_median )
@@ -273,6 +275,10 @@ class BaseFitter(ABC):
             train_kwargs = dict(patience = 500, max_train = 20000)
             guide_func = partial(infer.autoguide.AutoBNAFNormal, num_flows =4,hidden_factors = [5,], init_loc_fn = infer.init_to_median)
             results = self._train_SVI(guide_func,method='svi-flow',ELBO_loss= infer.Trace_ELBO(8),train_kwargs=train_kwargs,num_round=3,lr_init = 1e-2, rkey=rkey,return_model = return_model,)
+        elif method=='svi-mvn':
+            train_kwargs = dict(patience = 200, max_train = 5000)
+            guide_func = partial(infer.autoguide.AutoLowRankMultivariateNormal, init_scale = 5e-3, init_loc_fn = infer.init_to_median)
+            results = self._train_SVI(guide_func,method='svi-mvn',ELBO_loss= infer.TraceMeanField_ELBO(16),train_kwargs=train_kwargs,num_round=3,lr_init = 1e-1, rkey=rkey,return_model = return_model,)
         return results.summary()
 
     @abstractmethod
