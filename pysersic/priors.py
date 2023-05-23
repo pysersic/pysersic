@@ -452,34 +452,25 @@ class PySersicMultiPrior(BasePrior):
                 assert sky_guess is not None and sky_guess_err is not None, "If using a sky model must provide initial guess and uncertainty"
 
         super().__init__(sky_type = sky_type,sky_guess=sky_guess,sky_guess_err=sky_guess_err)
+        
         self.catalog = catalog
         self.all_priors = []
         self.N_sources = len(catalog['x'])
         image = jnp.zeros((100,100)) # dummy image
+        
+        #Loop through catalog to generate priors
         for ind in range(len(catalog['x'])):
             properties.set_flux_guess(catalog['flux'][ind])
             properties.set_r_eff_guess(r_eff_guess = catalog['r'][ind])
             properties.set_position_guess((catalog['x'][ind],catalog['y'][ind]) )
+            
             try:
                 properties.set_theta_guess(catalog['theta'][ind])
             except:
                 pass 
-
-            if catalog['type'][ind] == 'sersic':
-                prior = generate_sersic_prior(properties,suffix = f'_{ind:d}')
             
-            elif catalog['type'][ind] == 'doublesersic':
-                prior = generate_doublesersic_prior(properties,suffix = f'_{ind:d}')
+            prior = properties.generate_prior(catalog['type'][ind], sky_type= 'none', suffix  = f'_{ind:d}')
 
-            elif catalog['type'][ind] == 'pointsource':
-                prior = generate_pointsource_prior(properties,suffix = f'_{ind:d}')
-
-            elif catalog['type'][ind] == 'exp':
-                prior = generate_exp_prior(properties,suffix = f'_{ind:d}')
-            
-            elif catalog['type'][ind] == 'dev':
-                prior = generate_dev_prior(properties,suffix = f'_{ind:d}')
-        
             self.all_priors.append(prior)
             self.reparam_dict.update(prior.reparam_dict)
     
@@ -501,12 +492,13 @@ class PySersicMultiPrior(BasePrior):
         Returns
         -------
         list
-            a list of jax.numpy.arrays contraining sampled variables for each source
+            a list of jax.numpy.arrays containing sampled variables for each source
         """
         all_params = []
         for prior_cur in self.all_priors:
             all_params.append(prior_cur())
         return all_params
+
 
 
 class SourceProperties():
@@ -650,12 +642,12 @@ class SourceProperties():
         self.theta_guess = theta_guess 
         return self
     
-    def set_position_guess(self,position_guess: Optional[Iterable[int,int]]=None,**kwargs)-> SourceProperties:
+    def set_position_guess(self,position_guess: Optional[Iterable[float,float]]=None,**kwargs)-> SourceProperties:
         """Measure or set guess for initial position. If no estimate is provided, the position of the source in estimated using the data_properties() function from photutils
 
         Parameters
         ----------
-        position_guess : Optional[Iterable[int,int]], optional
+        position_guess : Optional[Iterable[float,float]], optional
             A 2 element list, tuple or array which contain the x,y pixel values of the inital guess for the centroid, by default None
 
         Returns
@@ -673,7 +665,8 @@ class SourceProperties():
     
     def generate_prior(self,
                 profile_type: str,
-                sky_type: Optional[str] = 'none')-> PySersicSourcePrior:
+                sky_type: Optional[str] = 'none',
+                suffix: Optional[str] = '')-> PySersicSourcePrior:
         """Function to generate default priors based on a given image and profile type
 
         Parameters
@@ -682,27 +675,51 @@ class SourceProperties():
             Type of profile
         sky_type : str, default 'none'
             Type of sky model to use, must be one of: 'none', 'flat', 'tilted-plane'
+        suffix : str, default ''
+            Add suffix onto all source related variables, generally only used to number sources in MultiPrior
         Returns
         -------
-        dict
-            Dictionary containing numpyro Distribution objects for each parameter
+        PySersicSourcePrior
+            Pysersic prior object to be used to initialize FitSingle
         """
-        if profile_type == 'sersic':
-            prior_dict = generate_sersic_prior(self, sky_type = sky_type,)
         
+        prior = PySersicSourcePrior(profile_type=profile_type, sky_type= sky_type,sky_guess=self.sky_guess,sky_guess_err=self.sky_guess_err, suffix=suffix)
+
+        # 3 properties common to all sources
+        prior.set_gaussian_prior('flux',self.flux_guess,self.flux_guess_err)
+        prior.set_gaussian_prior('xc', self.xc_guess, 1.)
+        prior.set_gaussian_prior('yc', self.yc_guess, 1.)
+
+        if profile_type in ['exp','dev','sersic']:
+            prior.set_truncated_gaussian_prior('r_eff', self.r_eff_guess,self.r_eff_guess_err, low = 0.5)
+            prior.set_uniform_prior('ellip', 0, 0.9)
+            prior.set_custom_prior('theta', dist.VonMises(loc = self.theta_guess,concentration=2), reparam= infer.reparam.CircularReparam() )
+            if profile_type == 'sersic':
+                prior.set_uniform_prior('n', 0.65, 8)
+
         elif profile_type == 'doublesersic':
-            prior_dict = generate_doublesersic_prior(self, sky_type = sky_type,)
 
-        elif profile_type == 'pointsource':
-            prior_dict = generate_pointsource_prior(self, sky_type = sky_type,)
+            prior.set_uniform_prior('f_1', 0.,1.)
 
-        elif profile_type in 'exp':
-            prior_dict = generate_exp_prior(self, sky_type = sky_type,)
+            prior.set_custom_prior('theta', dist.VonMises(loc = self.theta_guess,concentration=2), reparam= infer.reparam.CircularReparam() )
 
-        elif profile_type in 'dev':
-            prior_dict = generate_dev_prior(self, sky_type = sky_type,)
+            r_loc1 = self.r_eff_guess/1.5
+            r_eff_guess_err1 = jnp.sqrt(self.r_eff_guess/1.5)
+            prior.set_truncated_gaussian_prior('r_eff_1', r_loc1,r_eff_guess_err1, low = 0.5)
+
+            r_loc2 = self.r_eff_guess*1.5
+            r_eff_guess_err2 = jnp.sqrt(self.r_eff_guess*1.5)
+            prior.set_truncated_gaussian_prior('r_eff_2', r_loc2,r_eff_guess_err2, low = 0.5)
+
+
+            prior.set_uniform_prior('ellip_1', 0,0.9)
+            prior.set_uniform_prior('ellip_2', 0,0.9)
+
+            prior.set_truncated_gaussian_prior('n_1',4,1, low = 0.65,high = 8)
+            prior.set_truncated_gaussian_prior('n_2',1,1, low = 0.65,high = 8)
+
         
-        return prior_dict
+        return prior
     
     def visualize(self,figsize: Tuple[float,float]= (6.,6.),cmap:str = 'gray',scale: float = 1.)-> None:
         """Display a figure summarizing the current guess for the source properties
@@ -744,7 +761,7 @@ class SourceProperties():
         ax.plot(x,y,'r',lw=2)
         plt.show()
 
-def estimate_sky(im: np.array, mask: Optional[np.array] = None, n_pix_sample:int = 5 )-> Tuple[float,float,int]:
+def estimate_sky(image: np.array, mask: Optional[np.array] = None, n_pix_sample:int = 5 )-> Tuple[float,float,int]:
     """Estimate the sky background using the edge of the cutout
 
     Parameters
@@ -761,174 +778,33 @@ def estimate_sky(im: np.array, mask: Optional[np.array] = None, n_pix_sample:int
     Tuple[float,float,int]
         a tuple containing the median, standard deviation and number of pixels used
     """
-    if not np.ma.is_masked(im) and not mask is None:
-        im = np.ma.masked_array(im, mask )
-    edge_pixels = np.concatenate((im[:n_pix_sample,:],im[-n_pix_sample:,:],im[n_pix_sample:-n_pix_sample,:n_pix_sample],im[n_pix_sample:-n_pix_sample,-n_pix_sample:]),axis=None)
+    if not np.ma.is_masked(image) and not mask is None:
+        image = np.ma.masked_array(image, mask )
+    edge_pixels = np.concatenate((image[:n_pix_sample,:],image[-n_pix_sample:,:],image[n_pix_sample:-n_pix_sample,:n_pix_sample],image[n_pix_sample:-n_pix_sample,-n_pix_sample:]),axis=None)
     median_val = np.ma.median(edge_pixels)
     err_on_median = bws(edge_pixels)
     return median_val, err_on_median, np.prod(edge_pixels.shape)
 
-def generate_sersic_prior(image_properties: SourceProperties,
-                        sky_type: Optional[str] = 'none',
-                        suffix: Optional[str] = '')-> PySersicSourcePrior:
-    """ Derive automatic priors for a sersic profile based on an input image.
+def autoprior(image: np.array, profile_type: 'str', mask:np.array =None, sky_type: str = 'none') -> PySersicSourcePrior:
+    """Simple wrapper function to generate a prior using the built-in defaults. This can be used as a starting place but may not work for all sources
 
     Parameters
     ----------
-    image_properties: ImageProperties
-        class containing the guesses for the various properties
-    sky_type : str, default 'none'
-        Type of sky model to use, must be one of: 'none', 'flat', 'tilted-plane'
-    suffix: str, default ''
-        suffix to add to the parameter (e.g., for multi source fitting)
+    image : np.array
+        science image
+    profile_type : str
+        Type of profile to be fit
+    mask : np.array, optional
+        pixel by pixel mask, by default None
+    sky_type : str
+        Type of sky to fit, default 'none'
+
     Returns
     -------
-    dict
-        Dictionary containing numpyro Distribution objects for each parameter
-
+    PySersicSourcePrior
+        Prior object that can be used in initializing FitSingle
     """
-    prior = PySersicSourcePrior('sersic', sky_type= sky_type,sky_guess=image_properties.sky_guess,sky_guess_err=image_properties.sky_guess_err, suffix=suffix)
-    prior.set_gaussian_prior('flux',image_properties.flux_guess,image_properties.flux_guess_err)
-    prior.set_truncated_gaussian_prior('r_eff', image_properties.r_eff_guess,image_properties.r_eff_guess_err, low = 0.5)
-    prior.set_uniform_prior('ellip', 0, 0.9)
-    prior.set_custom_prior('theta', dist.VonMises(loc = image_properties.theta_guess,concentration=2), reparam= infer.reparam.CircularReparam() )
-    prior.set_uniform_prior('n', 0.65, 8)
-    prior.set_gaussian_prior('xc', image_properties.xc_guess, 1)
-    prior.set_gaussian_prior('yc', image_properties.yc_guess, 1)
-
-    return prior 
-
-def generate_exp_prior(image_properties: SourceProperties,
-        sky_type: Optional[str] = 'none',
-        suffix: Optional[str] = '')-> PySersicSourcePrior:
-    """ Derive automatic priors for a exp or dev profile based on an input image.
-    
-    Parameters
-    ----------
-    image_properties: ImageProperties
-        class containing the guesses for the various properties
-    sky_type : str, default 'none'
-        Type of sky model to use, must be one of: 'none', 'flat', 'tilted-plane'
-    
-    Returns
-    -------
-    dict
-        Dictionary containing numpyro Distribution objects for each parameter
-
-    """
-    
-    prior = PySersicSourcePrior('exp', sky_type= sky_type,sky_guess=image_properties.sky_guess,sky_guess_err=image_properties.sky_guess_err, suffix=suffix)
-    prior.set_gaussian_prior('flux',image_properties.flux_guess,image_properties.flux_guess_err)
-    prior.set_truncated_gaussian_prior('r_eff', image_properties.r_eff_guess,image_properties.r_eff_guess_err, low = 0.5)
-    prior.set_uniform_prior('ellip', 0,0.9)
-    prior.set_custom_prior('theta', dist.VonMises(loc = image_properties.theta_guess,concentration=2), reparam= infer.reparam.CircularReparam() )
-    prior.set_gaussian_prior('xc', image_properties.xc_guess, 1)
-    prior.set_gaussian_prior('yc', image_properties.yc_guess, 1)
-
+    props = SourceProperties(image = image, mask = mask)
+    prior = props.generate_prior(profile_type = profile_type, sky_type = sky_type)
     return prior
-
-def generate_dev_prior(image_properties: SourceProperties,
-        sky_type: Optional[str] = 'none',
-        suffix: Optional[str] = '')-> PySersicSourcePrior:
-    """ Derive automatic priors for a exp or dev profile based on an input image.
-    
-    Parameters
-    ----------
-    image_properties: ImageProperties
-        class containing the guesses for the various properties
-    sky_type : str, default 'none'
-        Type of sky model to use, must be one of: 'none', 'flat', 'tilted-plane'
-    
-    Returns
-    -------
-    dict
-        Dictionary containing numpyro Distribution objects for each parameter
-
-    """
-    
-    prior = PySersicSourcePrior('dev', sky_type= sky_type,sky_guess=image_properties.sky_guess,sky_guess_err=image_properties.sky_guess_err, suffix=suffix)
-    prior.set_gaussian_prior('flux',image_properties.flux_guess,image_properties.flux_guess_err)
-    prior.set_truncated_gaussian_prior('r_eff', image_properties.r_eff_guess,image_properties.r_eff_guess_err, low = 0.5)
-    prior.set_uniform_prior('ellip', 0,0.9)
-    prior.set_custom_prior('theta', dist.VonMises(loc = image_properties.theta_guess,concentration=2), reparam= infer.reparam.CircularReparam() )
-    prior.set_gaussian_prior('xc', image_properties.xc_guess, 1)
-    prior.set_gaussian_prior('yc', image_properties.yc_guess, 1)
-
-    return prior
-
-def generate_doublesersic_prior(image_properties: SourceProperties,
-        sky_type: Optional[str] = 'none',
-        suffix: Optional[str] = '')-> PySersicSourcePrior:
-    """ Derive automatic priors for a double sersic profile based on an input image. Please note that fitting a double sersic is a difficult problem and this is a rather simple recipe to design the priors that may results in poor performance and/or convergence issues. In the future we hope to find a better way to initialize the prior but use with caution for now.
-    
-    Parameters
-    ----------
-    image_properties: ImageProperties
-        class containing the guesses for the various properties
-    sky_type : str, default 'none'
-        Type of sky model to use, must be one of: 'none', 'flat', 'tilted-plane'
-        
-    Returns
-    -------
-    dict
-        Dictionary containing numpyro Distribution objects for each parameter
-
-    """
-
-    prior = PySersicSourcePrior('doublesersic', sky_type= sky_type,sky_guess=image_properties.sky_guess,sky_guess_err=image_properties.sky_guess_err, suffix=suffix)
-    prior.set_gaussian_prior('flux',image_properties.flux_guess,image_properties.flux_guess_err)
-    prior.set_uniform_prior('f_1', 0.,1.)
-
-    prior.set_custom_prior('theta', dist.VonMises(loc = image_properties.theta_guess,concentration=2), reparam= infer.reparam.CircularReparam() )
-
-    r_loc1 = image_properties.r_eff_guess/1.5
-    r_eff_guess_err1 = jnp.sqrt(image_properties.r_eff_guess/1.5)
-    prior.set_truncated_gaussian_prior('r_eff_1', r_loc1,r_eff_guess_err1, low = 0.5)
-
-    r_loc2 = image_properties.r_eff_guess*1.5
-    r_eff_guess_err2 = jnp.sqrt(image_properties.r_eff_guess*1.5)
-    prior.set_truncated_gaussian_prior('r_eff_2', r_loc2,r_eff_guess_err2, low = 0.5)
-
-
-    prior.set_uniform_prior('ellip_1', 0,0.9)
-    prior.set_uniform_prior('ellip_2', 0,0.9)
-
-    prior.set_truncated_gaussian_prior('n_1',4,1, low = 0.65,high = 8)
-    prior.set_truncated_gaussian_prior('n_2',1,1, low = 0.65,high = 8)
-
-    prior.set_gaussian_prior('xc', image_properties.xc_guess, 1)
-    prior.set_gaussian_prior('yc', image_properties.yc_guess, 1)
-
-
-    return prior
-
-def generate_pointsource_prior(image_properties: SourceProperties,
-        sky_type: Optional[str] = 'none',
-        suffix: Optional[str] = '')-> PySersicSourcePrior:
-    """ Derive automatic priors for a pointsource based on an input image.
-    
-    Parameters
-    ----------
-    image_properties: ImageProperties
-        class containing the guesses for the various properties
-    sky_type : str, default 'none'
-        Type of sky model to use, must be one of: 'none', 'flat', 'tilted-plane'
-        
-    Returns
-    -------
-    dict
-        Dictionary containing numpyro Distribution objects for each parameter
-
-    """
-
-    prior = PySersicSourcePrior('pointsource' , sky_type= sky_type,sky_guess=image_properties.sky_guess,sky_guess_err=image_properties.sky_guess_err,suffix=suffix)
-    
-    prior.set_gaussian_prior('flux',image_properties.flux_guess,image_properties.flux_guess_err)
-    
-    prior.set_gaussian_prior('xc', image_properties.xc_guess, 1)
-    prior.set_gaussian_prior('yc', image_properties.yc_guess, 1)
-
-    return prior
-
-
 
