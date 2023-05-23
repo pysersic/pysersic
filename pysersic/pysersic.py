@@ -155,6 +155,7 @@ class BaseFitter(ABC):
             SVI_kwargs: Optional[dict]= {},
             train_kwargs: Optional[dict] = {},
             return_model: Optional[bool] = True,
+            num_sample: Optional[int] = 1_000,
             rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(6),
             )-> pandas.DataFrame:
         """
@@ -178,6 +179,8 @@ class BaseFitter(ABC):
             Additional arguments to pass to utils.train_numpyro_svi_early_stop, by default {}
         return_model : Optional[bool]
             Whether to return the model images but adds a small memory/time overhead, by default True
+        num_sample: Optional[int]
+            Number of samples to draw from trained SVI posterior
         rkey : Optional[jax.random.PRNGKey], optional
             PRNG key, by default jax.random.PRNGKey(6)
 
@@ -195,7 +198,7 @@ class BaseFitter(ABC):
 
         svi_res_dict =  dict(guide = guide, model = model_cur, svi_result = numpyro_svi_result)
         self.svi_results = PySersicResults(data=self.data,rms=self.rms,psf=self.psf,mask=self.mask,loss_func=self.loss_func,renderer=self.renderer)
-        self.svi_results.injest_data(svi_res_dict=svi_res_dict,purge_extra=True)
+        self.svi_results.injest_data(svi_res_dict=svi_res_dict,purge_extra=True, num_sample = num_sample)
         self.svi_results.add_prior(self.prior)
         self.svi_results.add_method_used(method)
         return self.svi_results
@@ -245,6 +248,7 @@ class BaseFitter(ABC):
     def estimate_posterior(self,
                         method : str='laplace',
                         return_model: bool = True,
+                        num_sample: Optional[int] = 1_000,
                         rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(6),
                         ) -> pandas.DataFrame:
         """Estimate the posterior using a method other than MCMC sampling. Generally faster than MCMC, but could be less accurate.
@@ -262,6 +266,9 @@ class BaseFitter(ABC):
             method to use, by default 'laplace'
         return_model : Optional[bool]
             Whether to return the model images but adds a small memory/time overhead, by default True
+                num_sample: Optional[int]
+        Number of samples to draw from trained SVI posterior
+            Number of samples to draw from trained SVI posterior
         rkey : Optional[jax.random.PRNGKey], optional
             rng key, by default jax.random.PRNGKey(6)
         
@@ -270,15 +277,15 @@ class BaseFitter(ABC):
         if method=='laplace':
             train_kwargs = dict(patience = 250, max_train = 10000)
             guide_func = partial(infer.autoguide.AutoLaplaceApproximation, init_loc_fn = infer.init_to_median )
-            results = self._train_SVI(guide_func,method=method, train_kwargs=train_kwargs, return_model = return_model, rkey=rkey)
+            results = self._train_SVI(guide_func,method=method, train_kwargs=train_kwargs, return_model = return_model, rkey=rkey, num_sample=num_sample)
         elif method=='svi-flow':
             train_kwargs = dict(patience = 500, max_train = 20000)
             guide_func = partial(infer.autoguide.AutoBNAFNormal, num_flows =4,hidden_factors = [5,], init_loc_fn = infer.init_to_median)
-            results = self._train_SVI(guide_func,method='svi-flow',ELBO_loss= infer.Trace_ELBO(8),train_kwargs=train_kwargs,num_round=3,lr_init = 1e-2, rkey=rkey,return_model = return_model,)
+            results = self._train_SVI(guide_func,method='svi-flow',ELBO_loss= infer.Trace_ELBO(8),train_kwargs=train_kwargs,num_round=3,lr_init = 1e-2, rkey=rkey,return_model = return_model,num_sample=num_sample)
         elif method=='svi-mvn':
             train_kwargs = dict(patience = 200, max_train = 5000)
             guide_func = partial(infer.autoguide.AutoLowRankMultivariateNormal, init_scale = 5e-3, init_loc_fn = infer.init_to_median)
-            results = self._train_SVI(guide_func,method='svi-mvn',ELBO_loss= infer.TraceMeanField_ELBO(16),train_kwargs=train_kwargs,num_round=3,lr_init = 1e-1, rkey=rkey,return_model = return_model,)
+            results = self._train_SVI(guide_func,method='svi-mvn',ELBO_loss= infer.TraceMeanField_ELBO(16),train_kwargs=train_kwargs,num_round=3,lr_init = 1e-1, rkey=rkey,return_model = return_model,num_sample=num_sample)
         return results.summary()
 
     @abstractmethod
@@ -351,7 +358,7 @@ class FitSingle(BaseFitter):
 
             obs = out + sky
             if return_model:
-                obs = deterministic('model', obs)
+                deterministic('model', obs)
             self.loss_func(obs, self.data, self.rms, self.mask)
         return model
 

@@ -77,6 +77,7 @@ class PySersicResults():
                 sampler: Optional[numpyro.infer.mcmc.MCMC] =  None, 
                 svi_res_dict: Optional[dict] =  None,
                 purge_extra: Optional[bool] = True,
+                num_sample: Optional[int] = 1_000,
                 rkey: Optional[jax.random.PRNGKey] = random.PRNGKey(5)
         ) -> pd.DataFrame:
         """Method to injest data from optimized SVI model or results of sampling. 
@@ -92,6 +93,8 @@ class PySersicResults():
             Dictionary containing 'guide', 'model' and 'svi_result' specifying a trained SVI model
         purge_extra : Optional[bool], optional
             Whether to purge variables containing 'auto', 'base' or 'unwrapped' often used in reparamaterization, by default True
+        num_sample: Optional[int]
+            Number of samples to draw from trained SVI posterior, no effect if sampling was used.
         rkey : Optional[jax.random.PRNGKey], optional
             PRNG key to use, by default jax.random.PRNGKey(5)
 
@@ -119,7 +122,7 @@ class PySersicResults():
             assert 'model' in svi_res_dict.keys()
             assert 'svi_result' in svi_res_dict.keys()
             self.input  = svi_res_dict
-            post_raw = svi_res_dict['guide'].sample_posterior(rkey, svi_res_dict['svi_result'].params, sample_shape = ((1000,)))
+            post_raw = svi_res_dict['guide'].sample_posterior(rkey, svi_res_dict['svi_result'].params, sample_shape = ((num_sample,)))
             #Convert to arviz
             post_dict = {}
             for key in post_raw:
@@ -130,7 +133,7 @@ class PySersicResults():
 
         return
 
-    def _parse_injested_data(self,data:az.InferenceData,purge_extra:bool=True)->az.InferenceData:
+    def _parse_injested_data(self,data:az.InferenceData, purge_extra:bool = True, save_model: bool = True)->az.InferenceData:
         """Helper function to postprocess the poterior object (internal use).
 
         Parameters
@@ -139,7 +142,8 @@ class PySersicResults():
             _description_
         purge_extra : bool, optional
             whether to purge extra params not part of the fitting, by default True
-
+        save_model : bool
+            Whether to set self.models with model images from posterior
         Returns
         -------
         arviz.InferenceData
@@ -159,7 +163,8 @@ class PySersicResults():
                     to_drop.append(var)
                 elif var == 'model':
                     to_drop.append(var)
-                    self.models = data['posterior'][var]
+                    if save_model:
+                        self.models = data['posterior'][var]
             data.posterior = data.posterior.drop_vars(to_drop).drop_dims(['model_dim_0','model_dim_1'], errors = 'ignore')
         return data
 
@@ -357,6 +362,32 @@ class PySersicResults():
             fname+='.asdf'
         af.write_to(fname)
 
+    def sample_posterior(self, num_sample: int, purge_extra: Optional[bool] = True, rkey: Optional[jax.random.PRNGKey] = random.PRNGKey(7))-> az.InferenceData:
+        """Generate extra samples from an trained SVI posterior
+
+        Parameters
+        ----------
+        num_sample : int
+            number of samples to draw
+        purge_extra : Optional[bool], optional
+            Whether to purge variables containing 'auto', 'base' or 'unwrapped' often used in reparamaterization, by default True
+        rkey : Optional[jax.random.PRNGKey], optional
+            PRNG key to use, by default jax.random.PRNGKey(7)
+
+        Returns
+        -------
+        az.InferenceData
+            arviz InferenceData object containing posterior
+        """
+        assert self.runtype == 'svi', "Can only add samples if SVI was used for inference"
+        post_raw = self.input['guide'].sample_posterior(rkey, self.input['svi_result'].params, sample_shape = ((num_sample,)))
+        #Convert to arviz
+        post_dict = {}
+        for key in post_raw:
+            post_dict[key] = post_raw[key][jnp.newaxis,]
+        idata = az.from_dict(post_dict)
+        idata = self._parse_injested_data(idata,purge_extra=purge_extra, save_model= False)
+        return idata
 
 def parse_multi_results(results: PySersicResults, source_num: int) -> PySersicResults:
     """Function written to parse results from a FitMulti instance to isolate a single source. A new PySersicResults class is created with only the posteriors of the specified source. The original chains saved under `.idata_all`
