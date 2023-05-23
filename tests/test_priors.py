@@ -1,6 +1,7 @@
 import pytest
 import jax.numpy as jnp
-from pysersic.priors import BasePrior, PySersicMultiPrior, PySersicSourcePrior, SourceProperties
+import numpy as np
+from pysersic.priors import BasePrior, PySersicMultiPrior, PySersicSourcePrior, SourceProperties, estimate_sky
 from numpyro.handlers import seed
 from numpyro import distributions as dist
 
@@ -74,3 +75,11 @@ def test_PySersicMultiPrior():
     assert params[2] == pytest.approx([ 1.82923260e+01,  1.13821745e+01,  1.21627632e+02,
                 3.357822e+00,  7.022609e+00,  8.82269740e-02,
                 -6.36531591e-01 ], rel=1e-5)
+    
+def test_sky():
+    rng = np.random.default_rng(1234567)
+    test_im = rng.normal(size=  (100,100))
+    med,std,npix = estimate_sky(test_im, n_pix_sample= 5)
+    assert med == pytest.approx(0., abs = 1e-2)
+    assert std == pytest.approx(1., abs = 1e-2)
+    assert npix == 1900

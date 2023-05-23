@@ -4,6 +4,7 @@ from abc import ABC
 from typing import Iterable, Optional, Union, Tuple
 
 import astropy.units as u
+from astropy.stats import biweight_scale as bws
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
@@ -564,12 +565,11 @@ class SourceProperties():
         SourceProperties
             returns self
         """
-        edge_pixels = np.concatenate((self.image[:n_pix_sample,:],self.image[-n_pix_sample:,:],self.image[:,:n_pix_sample],self.image[:,-n_pix_sample:]),axis=None)
-        median_val = np.median(edge_pixels)
+        med, std, npix = estimate_sky(self.image, n_pix_sample= n_pix_sample)
         if sky_guess is None:
-            self.sky_guess = median_val
+            self.sky_guess = med
         if sky_guess_err is None:
-            self.sky_guess_err = 2*np.std(edge_pixels)/np.sqrt( np.prod(edge_pixels.shape) )
+            self.sky_guess_err = 2*std/np.sqrt(npix)
         return self
 
     def set_flux_guess(self,flux_guess: Optional[float] =None,flux_guess_err: Optional[float] = None,**kwargs)-> SourceProperties:
@@ -743,6 +743,30 @@ class SourceProperties():
         y = np.sin(arr) * self.r_eff_guess + self.yc_guess 
         ax.plot(x,y,'r',lw=2)
         plt.show()
+
+def estimate_sky(im: np.array, mask: Optional[np.array] = None, n_pix_sample:int = 5 )-> Tuple[float,float,int]:
+    """Estimate the sky background using the edge of the cutout
+
+    Parameters
+    ----------
+    im : np.array
+        image, either an array or masked array
+    mask : Optional[np.array], optional
+        mask to apply, if im is not a masked array already, by default None
+    n_pix_sample : int, optional
+        number of pixels around the edge to use, by default 5
+
+    Returns
+    -------
+    Tuple[float,float,int]
+        a tuple containing the median, standard deviation and number of pixels used
+    """
+    if not np.ma.is_masked(im) and not mask is None:
+        im = np.ma.masked_array(im, mask )
+    edge_pixels = np.concatenate((im[:n_pix_sample,:],im[-n_pix_sample:,:],im[n_pix_sample:-n_pix_sample,:n_pix_sample],im[n_pix_sample:-n_pix_sample,-n_pix_sample:]),axis=None)
+    median_val = np.ma.median(edge_pixels)
+    err_on_median = bws(edge_pixels)
+    return median_val, err_on_median, np.prod(edge_pixels.shape)
 
 def generate_sersic_prior(image_properties: SourceProperties,
                         sky_type: Optional[str] = 'none',
