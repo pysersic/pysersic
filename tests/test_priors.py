@@ -76,9 +76,9 @@ def test_PySersicMultiPrior():
                 3.357822e+00,  7.022609e+00,  8.82269740e-02,
                 -6.36531591e-01 ], rel=1e-5)
     
-def test_sky():
+def test_sky_estimate():
     rng = np.random.default_rng(1234567)
-    test_im = rng.normal(size=  (100,100))
+    test_im = rng.normal(size = (100,100))
     med,std,npix = estimate_sky(test_im, n_pix_sample= 5)
     assert med == pytest.approx(0., abs = 1e-2)
     assert std == pytest.approx(1., abs = 1e-2)
