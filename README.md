@@ -4,11 +4,11 @@
 [![Documentation Status](https://readthedocs.org/projects/pysersic/badge/?version=latest)](https://pysersic.readthedocs.io/en/latest/?badge=latest)
 ![tests](https://github.com/pysersic/pysersic/actions/workflows/pytest.yml/badge.svg)
 
-pysersic is a code for fitting sersic profiles to galaxy images using Bayesian Inference. It is written in python using ![`jax`](https://github.com/google/jax) with inference performed using ![`numpyro`](https://github.com/pyro-ppl/numpyro)
+pysersic is a code for fitting sersic profiles to galaxy images using Bayesian Inference. It is written in python using [jax](https://github.com/google/jax) with inference performed using [numpyro](https://github.com/pyro-ppl/numpyro)
 
 ## Installation
 
-First you should install jax. The easiest way to do this is to use ``` pip install 'jax[cpu]' ```, however if you are on windows or planning on running it on a GPU, the installation can be a little more complicated, please see the guide ![here](https://github.com/google/jax#installation). Next you can install pysersic! We will be uploading it to pypi very soon, but for now you should install it locally by cloning the github repo
+First you should install jax. The easiest way to do this is to use ``` pip install 'jax[cpu]' ```, however if you are on windows or planning on running it on a GPU, the installation can be a little more complicated, please see the guide [here](https://github.com/google/jax#installation). Next you can install pysersic! We will be uploading it to pypi very soon, but for now you should install it locally by cloning the github repo
 
 ```
 git clone https://github.com/pysersic/pysersic.git
@@ -18,7 +18,7 @@ pip install -e .
 
 ## Basic usage
 
-All you need to run pysersic is a cutout of you galaxy of interest, and cutout of the error map, pixelized version of the PSF, and optionally a mask specifying bad pixels or nearby sources. The most basic setup is shown below for many many more details and in depth examples please see the ![documentation](https://pysersic.readthedocs.io). First we set up a prior.
+All you need to run pysersic is a cutout of you galaxy of interest, and cutout of the error map, pixelized version of the PSF, and optionally a mask specifying bad pixels or nearby sources. The most basic setup is shown below for many many more details and in depth examples please see the [documentation](https://pysersic.readthedocs.io/en/latest/). First we set up a prior.
 
 ```
 from pysersic.priors import SourceProperties
