@@ -74,6 +74,7 @@ class PySersicResults():
             created prior object
         """
         self.prior = prior 
+    
     def injest_data(self, 
                 sampler: Optional[numpyro.infer.mcmc.MCMC] =  None, 
                 svi_res_dict: Optional[dict] =  None,
