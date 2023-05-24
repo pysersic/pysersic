@@ -3,6 +3,7 @@ from typing import Callable, Optional, Tuple, Union
 
 import arviz as az
 import asdf
+import re
 import corner
 import jax
 import jax.numpy as jnp
@@ -410,14 +411,21 @@ def parse_multi_results(results: PySersicResults, source_num: int) -> PySersicRe
     
     if source_num == -1:
         if not hasattr(new_res, 'idata_all'):
-           print("No need to resest posterior, returning original")
+           print("No need to reset posterior, returning original")
         else:
             idata_all = copy.copy(new_res.idata_all)
             new_res.__setattr__('idata', idata_all)
             new_res.__delattr__('idata_all')
     else:
+        #Select variables for source
         param_names = new_res.prior.all_priors[source_num].param_names
         source_names = [pname + f'_{source_num}' for pname in param_names]
+
+        #Search for other meta variables like sky etc.
+        meta_names = []
+        for k in new_res.idata.posterior.keys():
+            if re.search(f"_[0-{new_res.prior.N_sources:d}]", k) is None:
+                meta_names.append(k)
 
         if hasattr(new_res, 'idata_all'):
             idata = new_res.idata_all
@@ -426,7 +434,7 @@ def parse_multi_results(results: PySersicResults, source_num: int) -> PySersicRe
             new_res.__setattr__('idata_all', idata)
 
         
-        post_source = az.extract(idata, var_names = source_names , combined = False)
+        post_source = az.extract(idata, var_names = source_names+meta_names , combined = False)
         idata_source = az.InferenceData(posterior = post_source)
         idata_source.rename_vars(dict(zip(source_names,param_names)), inplace = True)
 
