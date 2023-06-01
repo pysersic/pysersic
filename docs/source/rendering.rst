@@ -1,10 +1,12 @@
 Rendering
 ==========
 
-The foundation of any Sersic fitting method is an efficient and accurate way to render the model images. In pysersic this performed using the ``rendering.py`` module. This is kept seperate from the inference module to facilitate easy testing of different implementations and to hopefully encourage innovation. With the initial release we have implemented three rendering methods which will be described below: ``PixelRenderer``, ``FourierRenderer``, and ``HybridRenderer``. All of these are implemented in classes which are based on the ``BaseRenderer`` class, upon which new renderers can be built. These classes are all initialized with the desired image shape and PSF cutout. Each algorithm has additional optional arguments described below.
+The foundation of any Sersic fitting method is an efficient and accurate way to render the model images. In pysersic this performed using the ``rendering.py`` module. This is kept seperate from the inference module to facilitate easy testing of different implementations and to hopefully encourage innovation. With the initial release we have implemented three rendering methods which will be described below: ``PixelRenderer``, ``FourierRenderer``, and ``HybridRenderer``. All of these are implemented in classes which are based on the ``BaseRenderer`` class, upon which new renderers can be built. These classes are all initialized with the desired image shape and PSF cutout. Each algorithm has additional optional arguments described below. 
+
+We set ``HybridRenderer`` as the default as it provides accurate results for the center of sources, where most of the signal is, while avoiding the aliasing issues of ``FourierRenderer``. However it is not as accurate at very large radii (at greater that 10 time the effective radius) and at low sersic index, n $<$ 0.8. In these cases it is better to use ``PixelRenderer``.
 
 ``PixelRenderer``
--------------
+------------------
 
 The first rendering method is the most straightforward and is similar to many other Sersic fitting codes. It involves rendering the profile on the pixel grid "above the sky", i.e. the intrinsic profile. This intrinsic image is then convolved with the PSF using a FFT to create the model image to be compared with the data. When using this approach, we have to be careful to ensure accurate rendering for high index profiles. Near the center of such a profile, the brightness of the profile changes so quickly that the center of a pixel is no longer an accurate approximation for the average flux, as is implicitly assumed when rendering on a pixel grid. As is common, we implement an over-sampling scheme to better predict the flux for these profiles. To conserve computational resources oversampling is performed in a square grid with a fixed size and location in the center of the image where these effects are most prevalent.  
 
@@ -16,7 +18,7 @@ There are two optional arguments:
 * ``num_os`` - Number of sub-pixels in each direction to oversample by.
 
 ``FourierRenderer`` and ``HybridRenderer``
-----------------------------------
+-------------------------------------------
 
 An increasingly common method for rendering profiles is to instead render the profile in Fourier space. This offers several benefits, including faster convolution, only involving a single inverse FFT, and accurate rendering of the centers of profiles without the need for over sampling. In our implementation, it has the additional benefit of providing accurate results for all sources, not just those at the center.
 
