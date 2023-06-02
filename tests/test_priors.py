@@ -4,7 +4,7 @@ import numpy as np
 from pysersic.priors import BasePrior, PySersicMultiPrior, PySersicSourcePrior, SourceProperties, estimate_sky
 from numpyro.handlers import seed
 from numpyro import distributions as dist
-
+ 
 prof_names = ['sersic','doublesersic','pointsource','exp','dev']
 prof_vars = [ ['xc','yc','flux','r_eff','n','ellip','theta'],
         ['xc','yc','flux','f_1', 'r_eff_1','n_1','ellip_1', 'r_eff_2','n_2','ellip_2','theta'],

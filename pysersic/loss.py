@@ -32,7 +32,7 @@ def cash_loss(mod: jnp.array,
                 rms: jnp.array,
                 mask: jnp.array)-> float:
     """
-    Cash statistic based on Poisson statistics derrived in Cash (1979) (DOI 10.1086/156922) and advocated for in Erwin (2015) (https://arxiv.org/abs/1408.1097) for use in Sersic fitting. Since the is based on Poisson statistics, scaling of the image will produce different confidence intervals. Additionally, since a logorithm is taken of the model image, negative values associated with different sky models will cause issues.
+    Cash statistic based on Poisson statistics derived in Cash (1979) (DOI 10.1086/156922) and advocated for in Erwin (2015) (https://arxiv.org/abs/1408.1097) for use in Sersic fitting. Since the is based on Poisson statistics, scaling of the image will produce different confidence intervals. Additionally, since a logarithm is taken of the model image, negative values associated with different sky models will cause issues.
 
     Parameters
     ----------
@@ -120,7 +120,7 @@ def student_t_loss(mod: jnp.array,
                 mask: jnp.array,
                 nu: Optional[int] = 5)-> float:
     """
-    Student T loss, with a df = 5 by default. This has fatter tails than Gaussian loss (or chi squared) so is more resiliant to outliers
+    Student T loss, with a df = 5 by default. This has fatter tails than Gaussian loss (or chi squared) so is more resilient to outliers
 
     Parameters
     ----------
@@ -147,7 +147,7 @@ def student_t_loss_free_sys(mod: jnp.array,
                 mask: jnp.array,
                 nu: Optional[int] = 5)-> float:
     """
-    Student T loss, which has fatter tails than Gaussian loss (or chi squared) so is so is more resiliant to outliers. In addition, add additional systematic increase such that
+    Student T loss, which has fatter tails than Gaussian loss (or chi squared) so is so is more resilient to outliers. In addition, add additional systematic increase such that
 
     $$ \sigma_{new,i}^2 = \sigma_{old,i}^2 + \sigma_{sys}^2 $$
 
@@ -253,7 +253,7 @@ def gaussian_mixture_w_sys(mod: jnp.array,
                 c: Optional[float] = 5.
                 )-> float:
     """
-    Gaussian mixture loss function, with one representing a "contaminating" outlier distribution with standard deviation equal to c*rms where c is 5 by default. The "contaminating fraction" or fraction of outliers is a free parameter with a Uniform prior between 0 and 0.25.
+    Gaussian mixture loss function, with one representing a "contaminating" outlier distribution with standard deviation equal to c*rms where c is 5 by default. The "outlier fraction" or fraction of outliers is a free parameter with a Uniform prior between 0 and 0.25.
 
     Parameters
     ----------
@@ -294,7 +294,7 @@ def gaussian_mixture_w_frac(mod: jnp.array,
                 c: Optional[float] = 5.
                 )-> float:
     """
-    Gaussian mixture loss function, with one representing a "contaminating" outlier distribution with standard deviation equal to c*rms where c is 5 by default. The "contaminating fraction" or fraction of outliers is a free parameter with a Uniform prior between 0 and 0.25.
+    Gaussian mixture loss function, with one representing a "contaminating" outlier distribution with standard deviation equal to c*rms where c is 5 by default. The "outlier fraction" or fraction of outliers is a free parameter with a Uniform prior between 0 and 0.25.
 
     Parameters
     ----------

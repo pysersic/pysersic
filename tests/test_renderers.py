@@ -6,7 +6,7 @@ import jax.numpy as jnp
 from jax.scipy.special import gammainc
 from scipy.integrate import dblquad
 from functools import partial
-
+ 
 kern = Gaussian2DKernel(x_stddev= 1.5)
 psf = kern.array
 err_tol = 0.01 # 1% error tolerence for total flux

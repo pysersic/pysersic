@@ -70,7 +70,7 @@ def match_line_and_load_galfit(list_of_strings: Iterable, to_match: str, assert_
     return load_fits_from_galfit_line(line)
 
 def generate_fitter_from_galfit_config(config_loc: str, loss: callable = gaussian_loss ) -> Union[FitSingle,FitMulti]:
-    """Function to generate a Fitter instance from a galfit config file. This function is only meant to be a starting place to easily try PySersic on the many galfit config files we know you all have lying around. As such this does not follow all of the rules and constraints the galfit takes into acocunt. For more fine grained control we reccomend iniatilizing a pysersic Fitter instance yourself, please see the `examples/` folder or the documentation for some help with this. 
+    """Function to generate a Fitter instance from a galfit config file. This function is only meant to be a starting place to easily try PySersic on the many galfit config files we know you all have lying around. As such this does not follow all of the rules and constraints the galfit takes into account. For more fine grained control we recommend initializing a pysersic Fitter instance yourself, please see the `examples/` folder or the documentation for some help with this. 
 
     Parameters
     ----------
