@@ -1,7 +1,7 @@
 Installation
 ============
 
-pysersic is built on `jax <https://github.com/google/jax>`_, which is fairly simple to install now but can be an issue in some use cases. If you are only planning on running only with your CPU, then it can be installed simply using 
+pysersic is built on `jax <https://github.com/google/jax>`_, which is fairly simple to install now but can be an issue in some use cases. If you are planning on running only with your CPU, then it can be installed simply using 
 
 .. code-block:: bash
 
