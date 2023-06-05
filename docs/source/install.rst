@@ -9,8 +9,13 @@ pysersic is built on `jax <https://github.com/google/jax>`_, which is fairly sim
 
 Unfortunately jax does not work on windows, so they reccomend utilizing the windows subsystem for linux (WSL) instead. If you are planning on using a GPU or TPU, you must make sure to install the right CUDA version. For more info please refer to the jax `install guide <https://github.com/google/jax#installation>`_. 
 
-Once jax is installed you can move on to installing pysersic. We will be uploading it to PyPi soon but in the meantime it can be installed from the github source files locally,
+Once jax is installed you can move on to installing pysersic. You can install the latest standard release of pysersic from pip: 
 
+.. code-block:: bash
+
+    $ pip install pysersic
+```
+Or, if you want the latest development build or the ability to edit the `pysersic` source code:
 .. code-block:: bash
 
     $ cd < Directory where it will be installed >
