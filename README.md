@@ -1,8 +1,9 @@
 ![pysersic logo featuring a spiral s-galaxy as the S](misc/pysersic.png)
- 
-![License](https://img.shields.io/badge/license-MIT-blue)
+[![PyPi version](https://img.shields.io/pypi/v/pysersic?color=blue)](https://pypi.org/project/pysersic)
+[![GitHub release](https://img.shields.io/github/v/release/pysersic/pysersic)](https://github.com/pysersic/pysersic/releases/)
 [![Documentation Status](https://readthedocs.org/projects/pysersic/badge/?version=latest)](https://pysersic.readthedocs.io/en/latest/?badge=latest)
 ![tests](https://github.com/pysersic/pysersic/actions/workflows/pytest.yml/badge.svg)
+![License](https://img.shields.io/badge/license-MIT-blue)
 
 pysersic is a code for fitting sersic profiles to galaxy images using Bayesian Inference. It is written in python using [jax](https://github.com/google/jax) with inference performed using [numpyro](https://github.com/pyro-ppl/numpyro)
 
