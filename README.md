@@ -22,7 +22,12 @@ First you should install jax. The easiest way to do this is to use ``` pip insta
 - scipy
 - tqdm
 
-Next you can install pysersic! We will be uploading it to pypi very soon, but for now you should install it locally by cloning the github repo.
+Next you can install pysersic! To install the latest stable release, you can simply pip install via 
+
+```
+pip install pysersic
+```
+If you would like the bleeding edge, development build (or would like to modify, add to, or otherwise access ```pysersic``` source files), you can also install from the github:
 
 ```
 git clone https://github.com/pysersic/pysersic.git
