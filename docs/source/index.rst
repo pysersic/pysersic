@@ -5,9 +5,20 @@
 
 Pysersic: A Python package for determining galaxy structural properties via Bayesian inference, accelerated with jax
 ====================================
-![License](https://img.shields.io/badge/license-MIT-blue)
-[![Documentation Status](https://readthedocs.org/projects/pysersic/badge/?version=latest)](https://pysersic.readthedocs.io/en/latest/?badge=latest)
-![tests](https://github.com/pysersic/pysersic/actions/workflows/pytest.yml/badge.svg)
+
+.. | build | image:: https://img.shields.io/github/actions/workflow/status/pysersic/pysersic/pytest.yml
+
+.. |Documentation Status| image:: https://readthedocs.org/projects/pysersic/badge/?version=latest
+   :target: http://pysersic.readthedocs.io/?badge=latest
+
+.. |GitHub release| image:: https://img.shields.io/github/v/release/pysersic/pysersic
+   :target: https://github.com/pysersic/pysersic/releases/
+
+.. |PyPI pyversions| image:: https://img.shields.io/pypi/v/pysersic?color=blue
+   :target: https://pypi.python.org/pypi/pysersic/
+
+.. |GitHub license| image:: https://img.shields.io/badge/license-MIT-blue
+   :target: https://github.com/pysersic/pysersic/blob/main/LICENSE
 
 pysersic is a Python package for fitting Sersic (an other) profiles to astronomical images using Bayesian inference. It is built using the ``jax`` framework with inference performed using the ``numpyro`` probabilistic programming library.
 
