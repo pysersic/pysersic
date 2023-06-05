@@ -286,7 +286,7 @@ class BaseFitter(ABC):
             train_kwargs = dict(patience = 200, max_train = 5000)
             guide_func = partial(infer.autoguide.AutoLowRankMultivariateNormal, init_scale = 5e-3, init_loc_fn = infer.init_to_median)
             results = self._train_SVI(guide_func,method='svi-mvn',ELBO_loss= infer.TraceMeanField_ELBO(16),train_kwargs=train_kwargs,num_round=3,lr_init = 1e-1, rkey=rkey,return_model = return_model,num_sample=num_sample)
-        return results.summary()
+        return results
 
     @abstractmethod
     def build_model(self,return_model: bool = True):
