@@ -3,8 +3,11 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to pysersic's documentation!
+Pysersic: A Python package for determining galaxy structural properties via Bayesian inference, accelerated with jax
 ====================================
+![License](https://img.shields.io/badge/license-MIT-blue)
+[![Documentation Status](https://readthedocs.org/projects/pysersic/badge/?version=latest)](https://pysersic.readthedocs.io/en/latest/?badge=latest)
+![tests](https://github.com/pysersic/pysersic/actions/workflows/pytest.yml/badge.svg)
 
 pysersic is a Python package for fitting Sersic (an other) profiles to astronomical images using Bayesian inference. It is built using the ``jax`` framework with inference performed using the ``numpyro`` probabilistic programming library.
 
