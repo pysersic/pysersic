@@ -14,15 +14,17 @@ Once jax is installed you can move on to installing pysersic. You can install th
 .. code-block:: bash
 
     $ pip install pysersic
-```
+
+
 Or, if you want the latest development build or the ability to edit the `pysersic` source code:
+
 .. code-block:: bash
 
     $ cd < Directory where it will be installed >
     $ git clone https://github.com/pysersic/pysersic
     $ cd pysersic
     $ pip install . -e
-```
+
 
 or by using pip to install directly from the github
 
