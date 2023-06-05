@@ -6,7 +6,7 @@
 Pysersic: A Python package for determining galaxy structural properties via Bayesian inference, accelerated with jax
 ====================================
 
-.. image:: https://img.shields.io/github/actions/workflow/status/pysersic/pysersic/pytest.yml/badge.svg
+.. image:: https://img.shields.io/github/actions/workflow/status/pysersic/pysersic/pytest.yml
 
 .. image:: https://readthedocs.org/projects/pysersic/badge/?version=latest
 
