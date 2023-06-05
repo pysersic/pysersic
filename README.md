@@ -8,7 +8,21 @@ pysersic is a code for fitting sersic profiles to galaxy images using Bayesian I
 
 ## Installation
 
-First you should install jax. The easiest way to do this is to use ``` pip install 'jax[cpu]' ```, however if you are on windows or planning on running it on a GPU, the installation can be a little more complicated, please see the guide [here](https://github.com/google/jax#installation). Next you can install pysersic! We will be uploading it to pypi very soon, but for now you should install it locally by cloning the github repo
+First you should install jax. The easiest way to do this is to use ``` pip install 'jax[cpu]' ```, however if you are on windows or planning on running it on a GPU, the installation can be a little more complicated, please see the guide [here](https://github.com/google/jax#installation). The other package dependencies for ```pysersic``` are:
+- arviz
+- asdf
+- astropy
+- corner
+- jax
+- matplotlib
+- numpy
+- numpyro
+- pandas
+- photutils
+- scipy
+- tqdm
+
+Next you can install pysersic! We will be uploading it to pypi very soon, but for now you should install it locally by cloning the github repo.
 
 ```
 git clone https://github.com/pysersic/pysersic.git
