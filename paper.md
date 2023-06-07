@@ -26,7 +26,7 @@ bibliography: paper.bib
 
 # Summary
 
-The modern standard for measuring structural parameters of galaxies involves a forward-modeling procedure in which parametric models are fit directly to images while accounting for the effect of the point-spread function (PSF). This is an integral step in many extragalactic studies. The most common parametric form is a Sérsic profile [@Sersic:1968] is described by a radial surface brightness profiles following,
+The modern standard for measuring structural parameters of galaxies involves a forward-modeling procedure in which parametric models are fit directly to images while accounting for the effect of the point-spread function (PSF). This is an integral step in many extragalactic studies. The most common parametric form is a Sérsic profile [@Sersic:1968] which is described by a radial surface brightness profiles following,
 
 
 $$
