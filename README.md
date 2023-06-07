@@ -1,4 +1,5 @@
 ![pysersic logo featuring a spiral s-galaxy as the S](misc/pysersic.png)
+[![status](https://joss.theoj.org/papers/4214c6e588774490458e34630e8052c1/status.svg)](https://joss.theoj.org/papers/4214c6e588774490458e34630e8052c1)
 [![PyPi version](https://img.shields.io/pypi/v/pysersic?color=blue)](https://pypi.org/project/pysersic)
 [![GitHub release](https://img.shields.io/github/v/release/pysersic/pysersic)](https://github.com/pysersic/pysersic/releases/)
 [![Documentation Status](https://readthedocs.org/projects/pysersic/badge/?version=latest)](https://pysersic.readthedocs.io/en/latest/?badge=latest)
