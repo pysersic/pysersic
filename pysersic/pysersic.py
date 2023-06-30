@@ -69,7 +69,7 @@ class BaseFitter(ABC):
         else:
             self.mask = jnp.logical_not(jnp.array(mask)).astype(jnp.bool_)
         
-        check_input_data(self.data,rms=self.rms,psf=self.psf,mask=self.mask)
+        data_isgood = check_input_data(self.data,rms=self.rms,psf=self.psf,mask=self.mask)
         self.renderer = renderer(data.shape, psf, **renderer_kwargs)
     
         self.prior_dict = {}
@@ -575,4 +575,4 @@ def check_input_data(data:ArrayLike,rms:ArrayLike,psf:ArrayLike,mask:ArrayLike=N
             raise MaskWarning('More than 50 percent of input image is masked. Is this correct? (Pysersic treats True/1 as masked; you may need to flip your boolean array.) ')
         if mask.shape !=data.shape:
             raise ShapeMatchError('Mask ndims must match input data ndims.')
-    return
+    return True
