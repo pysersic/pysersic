@@ -63,8 +63,8 @@ class BaseFitter(ABC):
         self.data = jnp.array(data) 
         self.rms = jnp.array(rms)
         self.psf = jnp.array(psf)
-        self.mask = parse_mask(mask,data)
-        data_isgood = check_input_data(self.data,rms=self.rms,psf=self.psf,mask=self.mask)
+        self.mask = parse_mask(mask,self.data)
+        data_isgood = check_input_data(self.data,rms=self.rms,psf=self.psf,mask=jnp.logical_not(self.mask))
         self.renderer = renderer(data.shape, psf, **renderer_kwargs)
     
         self.prior_dict = {}
@@ -531,7 +531,7 @@ def train_numpyro_svi_early_stop(
     return SVIRunResult(svi_class.get_params(best_state), svi_state,losses)
     
 
-def parse_mask(mask:ArrayLike=None,data=None):
+def parse_mask(mask:ArrayLike=None,data:ArrayLike=None):
     if mask is None:
         return jnp.ones_like(data).astype(jnp.bool_)
     else:
