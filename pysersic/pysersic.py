@@ -76,7 +76,7 @@ class BaseFitter(ABC):
         else:
             self.mask = jnp.logical_not(jnp.array(mask)).astype(jnp.bool_)
             if jnp.sum(self.mask)/jnp.prod(jnp.array(self.mask.shape))<0.5:
-                raise MaskWarning('More than 50 percent of input image is masked. Is this correct? (Pysersic treats False as masked; you may need to flip your boolean array.) ')
+                raise MaskWarning('More than 50 percent of input image is masked. Is this correct? (Pysersic treats True/1 as masked; you may need to flip your boolean array.) ')
         self.renderer = renderer(data.shape, psf, **renderer_kwargs)
     
         self.prior_dict = {}
