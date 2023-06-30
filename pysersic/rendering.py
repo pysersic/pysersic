@@ -7,6 +7,7 @@ import numpy as np
 from jax import jit
 from scipy.special import comb
 from functools import partial
+from pysersic.exceptions import * 
 
 base_profile_types = ['sersic','doublesersic','pointsource','exp','dev']
 base_profile_params =dict( 
@@ -19,10 +20,7 @@ base_profile_params =dict(
     )
 )
 
-class KernelError(Exception):
-    pass
-class PSFNormalizationWarning(Warning):
-    pass
+
 
 class BaseRenderer(object):
     def __init__(self, 
