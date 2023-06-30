@@ -14,7 +14,7 @@ from numpyro import deterministic, infer, optim
 from numpyro.handlers import condition, trace
 from numpyro.infer import SVI, Trace_ELBO
 from numpyro.infer.svi import SVIRunResult
-
+from pysersic.exceptions import *
 from pysersic.priors import PySersicMultiPrior, PySersicSourcePrior
 from pysersic.rendering import BaseRenderer, HybridRenderer
 from pysersic.results import PySersicResults
@@ -22,6 +22,7 @@ from pysersic.results import PySersicResults
 from .loss import gaussian_loss
 
 ArrayLike = Union[np.array, jax.numpy.array]
+
 
 class BaseFitter(ABC):
     """
@@ -63,14 +64,19 @@ class BaseFitter(ABC):
             
         self.data = jnp.array(data) 
         self.rms = jnp.array(rms)
+        if jnp.mean(self.rms) > 5*jnp.std(self.data):
+            raise RMSWarning('Input RMS map appears to be highly offset (>5x) in magnitude from the rms of the pixels in the input image.')
         self.psf = jnp.array(psf)
-
+        if not jnp.isclose(jnp.sum(self.psf),1.0,0.1):
+            raise PSFNormalizationWarning('PSF does not appear to be appropriately normalized; Sum(psf) is more than 0.1 away from 1.')
+        if jnp.all(self.data.shape<self.psf.shape):
+            raise KernelError('PSF pixel image size must be smaller than science image.')
         if mask is None:
             self.mask = jnp.ones_like(self.data).astype(jnp.bool_)
         else:
             self.mask = jnp.logical_not(jnp.array(mask)).astype(jnp.bool_)
-
-        self.renderer = renderer(data.shape, jnp.array(psf), **renderer_kwargs)
+        
+        self.renderer = renderer(data.shape, psf, **renderer_kwargs)
     
         self.prior_dict = {}
 
