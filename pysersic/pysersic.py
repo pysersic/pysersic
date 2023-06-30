@@ -537,7 +537,7 @@ def train_numpyro_svi_early_stop(
     
 
 
-def check_input_data(data,rms,psf,mask=None):
+def check_input_data(data:ArrayLike,rms:ArrayLike,psf:ArrayLike,mask:ArrayLike=None):
     """Check input data for certain conditions and raise warnings or exceptions if needed
 
     Parameters
@@ -573,4 +573,6 @@ def check_input_data(data,rms,psf,mask=None):
     if mask is not None:
         if jnp.sum(mask)/jnp.prod(jnp.array(mask.shape))<0.5:
             raise MaskWarning('More than 50 percent of input image is masked. Is this correct? (Pysersic treats True/1 as masked; you may need to flip your boolean array.) ')
+        if mask.shape !=data.shape:
+            raise ShapeMatchError('Mask ndims must match input data ndims.')
     return
