@@ -4,3 +4,5 @@ class KernelError(Exception):
     pass
 class PSFNormalizationWarning(Warning):
     pass
+class MaskWarning(Warning):
+    pass
