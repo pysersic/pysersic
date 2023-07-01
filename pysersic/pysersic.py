@@ -14,7 +14,7 @@ from numpyro import deterministic, infer, optim
 from numpyro.handlers import condition, trace
 from numpyro.infer import SVI, Trace_ELBO
 from numpyro.infer.svi import SVIRunResult
-
+from pysersic.exceptions import *
 from pysersic.priors import PySersicMultiPrior, PySersicSourcePrior
 from pysersic.rendering import BaseRenderer, HybridRenderer
 from pysersic.results import PySersicResults
@@ -22,6 +22,7 @@ from pysersic.results import PySersicResults
 from .loss import gaussian_loss
 
 ArrayLike = Union[np.array, jax.numpy.array]
+
 
 class BaseFitter(ABC):
     """
@@ -58,19 +59,13 @@ class BaseFitter(ABC):
         
         self.loss_func = loss_func
 
-        if data.shape != rms.shape:
-            raise AssertionError('rms map ndims must match input data')
-            
+        
         self.data = jnp.array(data) 
         self.rms = jnp.array(rms)
         self.psf = jnp.array(psf)
-
-        if mask is None:
-            self.mask = jnp.ones_like(self.data).astype(jnp.bool_)
-        else:
-            self.mask = jnp.logical_not(jnp.array(mask)).astype(jnp.bool_)
-
-        self.renderer = renderer(data.shape, jnp.array(psf), **renderer_kwargs)
+        self.mask = parse_mask(mask,self.data)
+        data_isgood = check_input_data(self.data,rms=self.rms,psf=self.psf,mask=jnp.logical_not(self.mask))
+        self.renderer = renderer(data.shape, psf, **renderer_kwargs)
     
         self.prior_dict = {}
 
@@ -535,3 +530,53 @@ def train_numpyro_svi_early_stop(
 
     return SVIRunResult(svi_class.get_params(best_state), svi_state,losses)
     
+
+def parse_mask(mask:ArrayLike=None,data:ArrayLike=None):
+    if mask is None:
+        return jnp.ones_like(data).astype(jnp.bool_)
+    else:
+        return jnp.logical_not(jnp.array(mask)).astype(jnp.bool_)
+
+def check_input_data(data:ArrayLike,rms:ArrayLike,psf:ArrayLike,mask:ArrayLike=None):
+    """Check input data for certain conditions and raise warnings or exceptions if needed
+
+    Parameters
+    ----------
+    data : ArrayLike
+        input image (galaxy/cutout)
+    rms : ArrayLike
+       rms/error map of the data. 
+    psf : ArrayLike
+        pixelized PSF
+    mask :ArrayLike, optional
+       mask with True/1 indicating a pixel should be masked, by default None
+
+    Raises
+    ------
+    RMSWarning
+        If the rms map is highly discrepant from the rms of the data
+    PSFNormalizationWarning
+        if the pst normalization is not ~1
+    KernelError
+        if the provided PSF is larger than the input image (exception)
+    MaskWarning
+        If more than 50% of the image is masked. 
+    """
+    rms = jnp.array(rms)
+    data = jnp.array(data)
+    psf = jnp.array(psf)
+    if data.shape != rms.shape:
+        raise ShapeMatchError('RMS map ndims must match input data ndims.')
+    if jnp.mean(rms) > 5*jnp.std(data):
+        raise RMSWarning('Input RMS map appears to be highly offset (>5x) in magnitude from the rms of the pixels in the input image.')
+    if not jnp.isclose(jnp.sum(psf),1.0,0.1):
+        raise PSFNormalizationWarning('PSF does not appear to be appropriately normalized; Sum(psf) is more than 0.1 away from 1.')
+    if jnp.all(data.shape<psf.shape):
+        raise KernelError('PSF pixel image size must be smaller than science image.')
+    if mask is not None:
+        mask = parse_mask(mask,data)
+        if jnp.sum(mask)/jnp.prod(jnp.array(mask.shape))<0.5:
+            raise MaskWarning('More than 50 percent of input image is masked. Is this correct? (Pysersic treats True/1 as masked; you may need to flip your boolean array.) ')
+        if mask.shape !=data.shape:
+            raise ShapeMatchError('Mask ndims must match input data ndims.')
+    return True

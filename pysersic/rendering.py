@@ -7,6 +7,7 @@ import numpy as np
 from jax import jit
 from scipy.special import comb
 from functools import partial
+from pysersic.exceptions import * 
 
 base_profile_types = ['sersic','doublesersic','pointsource','exp','dev']
 base_profile_params =dict( 
@@ -18,6 +19,7 @@ base_profile_params =dict(
     ['xc','yc','flux','r_eff','ellip','theta'],]
     )
 )
+
 
 
 class BaseRenderer(object):
@@ -36,8 +38,11 @@ class BaseRenderer(object):
         """
         self.im_shape = im_shape
         self.pixel_PSF = pixel_PSF
+        if not jnp.isclose(jnp.sum(self.pixel_PSF),1.0,0.1):
+            raise PSFNormalizationWarning('PSF does not appear to be appropriately normalized; Sum(psf) is more than 0.1 away from 1.')
         self.psf_shape = jnp.shape(self.pixel_PSF)
-
+        if jnp.all(self.im_shape<self.psf_shape):
+            raise KernelError('PSF pixel image size must be smaller than science image.')
         self.x = jnp.arange(self.im_shape[0])
         self.y = jnp.arange(self.im_shape[1])
         self.X,self.Y = jnp.meshgrid(self.x,self.y)
