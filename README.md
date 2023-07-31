@@ -72,4 +72,23 @@ nuts_res = fitter.sample() #Sample the posterior using the No U-turn sampler (NU
 ```
 
 ## Citation
-We will be submitting a paper soon describing pysersic for now please reference this webpage and cite 'Pasha & Miller in prep.' 
+If you use ```pysersic``` and find it useful, please do cite it. You can use the following BibTex, which currently reflects the arXiv version, and will be updated when the review with JOSS is completed. 
+
+```
+@ARTICLE{2023arXiv230605454P,
+       author = {{Pasha}, Imad and {Miller}, Tim B.},
+        title = "{pysersic: A Python package for determining galaxy structural properties via Bayesian inference, accelerated with jax}",
+      journal = {arXiv e-prints},
+     keywords = {Astrophysics - Astrophysics of Galaxies, Astrophysics - Instrumentation and Methods for Astrophysics},
+         year = 2023,
+        month = jun,
+          eid = {arXiv:2306.05454},
+        pages = {arXiv:2306.05454},
+          doi = {10.48550/arXiv.2306.05454},
+archivePrefix = {arXiv},
+       eprint = {2306.05454},
+ primaryClass = {astro-ph.GA},
+       adsurl = {https://ui.adsabs.harvard.edu/abs/2023arXiv230605454P},
+      adsnote = {Provided by the SAO/NASA Astrophysics Data System}
+}
+```
