@@ -60,10 +60,10 @@ class BaseFitter(ABC):
         self.loss_func = loss_func
 
         
-        self.data = jnp.array(data.astype(np.float64))
-        self.rms = jnp.array(rms.astype(np.float64))
-        self.psf = jnp.array(psf.astype(np.float64))
-        self.mask = parse_mask(mask.astype(np.int64),self.data)
+        self.data = jnp.array(data.astype(np.float32))
+        self.rms = jnp.array(rms.astype(np.float32))
+        self.psf = jnp.array(psf.astype(np.float32))
+        self.mask = parse_mask(mask.astype(np.int16),self.data)
         data_isgood = check_input_data(self.data,rms=self.rms,psf=self.psf,mask=jnp.logical_not(self.mask))
         self.renderer = renderer(data.shape, self.psf, **renderer_kwargs)
     
