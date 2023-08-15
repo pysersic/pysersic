@@ -22,6 +22,7 @@ First you should install jax. The easiest way to do this is to use ``` pip insta
 - pandas
 - photutils
 - scipy
+- sep
 - tqdm
 
 Next you can install pysersic! To install the latest stable release, you can simply pip install via 
