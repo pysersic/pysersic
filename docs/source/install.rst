@@ -31,3 +31,10 @@ or by using pip to install directly from the github
 .. code-block:: bash
     
     pip install git+https://github.com/pysersic/pysersic
+
+
+If you want to ensure everything is installed correctly, you can run our set of unit tests using `pytest <https://github.com/pytest-dev/pytest>`_. These can be run simply from the main directory using:
+
+.. code-block:: bash
+    
+    $ pytest .

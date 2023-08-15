@@ -38,6 +38,12 @@ cd pysersic
 pip install -e .
 ```
 
+To ensure everything is working correctly you can run the unit tests in the tests/ folder. These are implemented using [pytest](https://github.com/pytest-dev/pytest) and one installed can be run simply from the main directory with
+
+```
+$ pytest .
+```
+
 ## Basic usage
 
 All you need to run pysersic is a cutout of you galaxy of interest, and cutout of the error map, pixelized version of the PSF, and optionally a mask specifying bad pixels or nearby sources. The most basic setup is shown below for many many more details and in depth examples please see the [documentation](https://pysersic.readthedocs.io/en/latest/). First we set up a prior.
