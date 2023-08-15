@@ -60,12 +60,12 @@ class BaseFitter(ABC):
         self.loss_func = loss_func
 
         
-        self.data = jnp.array(data) 
-        self.rms = jnp.array(rms)
-        self.psf = jnp.array(psf)
+        self.data = jnp.array(data.astype(np.float32))
+        self.rms = jnp.array(rms.astype(np.float32))
+        self.psf = jnp.array(psf.astype(np.float32))
         self.mask = parse_mask(mask,self.data)
         data_isgood = check_input_data(self.data,rms=self.rms,psf=self.psf,mask=jnp.logical_not(self.mask))
-        self.renderer = renderer(data.shape, psf, **renderer_kwargs)
+        self.renderer = renderer(data.shape, self.psf, **renderer_kwargs)
     
         self.prior_dict = {}
 
@@ -535,7 +535,7 @@ def parse_mask(mask:ArrayLike=None,data:ArrayLike=None):
     if mask is None:
         return jnp.ones_like(data).astype(jnp.bool_)
     else:
-        return jnp.logical_not(jnp.array(mask)).astype(jnp.bool_)
+        return jnp.logical_not(jnp.array(mask.astype(int))).astype(jnp.bool_)
 
 def check_input_data(data:ArrayLike,rms:ArrayLike,psf:ArrayLike,mask:ArrayLike=None):
     """Check input data for certain conditions and raise warnings or exceptions if needed
