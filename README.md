@@ -74,6 +74,15 @@ svi_res = fitter.estimate_posterior('svi-flow') #Train a normalizing flow to est
 nuts_res = fitter.sample() #Sample the posterior using the No U-turn sampler (NUTS), retruns a PysersicResults object
 ```
 
+## Test Suite
+
+There is a growing set of tests that can be used to confirm the behavior of `pysersic` and its features is as expected. These tests run automatically on each pull request and merge. If you would like to run the tests yourself on your local machine, you can do so with the ``pytest`` package. Once installed, you can simply navigate to the ``tests`` directory and run: 
+
+```
+pytest
+```
+
+
 ## Citation
 If you use ```pysersic``` and find it useful, please do cite it. You can use the following BibTex, which currently reflects the arXiv version, and will be updated when the review with JOSS is completed. 
 
