@@ -24,6 +24,9 @@ First you should install jax. The easiest way to do this is to use ``` pip insta
 - scipy
 - tqdm
 
+There is a provided minimal `environment.yml` capturing the above in the base repo, as well as an `environment-lock.yml` which has a full set of versions specified for every dependency --- if you are having trouble with the installation, creating an environment using this file should ensure you have a single set of package versions that `pysersic` is known to work with. (We don't recommend using the lock yml in general, as `pysersic` should be kept up to date with new versions of its dependencies.)
+
+
 Next you can install pysersic! To install the latest stable release, you can simply pip install via 
 
 ```
