@@ -20,7 +20,7 @@ Pysersic
 
 .. image:: https://img.shields.io/badge/license-MIT-blue
 
-pysersic is a Python package for fitting Sersic (an other) profiles to astronomical images using Bayesian inference. It is built using the ``jax`` framework with inference performed using the ``numpyro`` probabilistic programming library.
+pysersic is a Python package for fitting Sersic (and other) profiles to astronomical images using Bayesian inference. It is built using the ``jax`` framework with inference performed using the ``numpyro`` probabilistic programming library.
 
 The code is hosted on `GitHub <https://github.com/pysersic/pysersic>`_ and is available open source under the MIT license. We will soon be submitting a paper describing pysersic, for now please cite Pasha & Miller in prep. and reference the github URL.
 
