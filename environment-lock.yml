@@ -1,0 +1,32 @@
+name: pysersic
+channels:
+  - pyviz
+  - conda-forge
+  - defaults
+dependencies:
+  - ipython=8.10.0=pyhd1c38e8_0
+  - ipython_genutils=0.2.0=pyhd3eb1b0_1
+  - python=3.10.9=h218abb5_0
+  - astropy=5.1=py310h4e76f89_0
+  - matplotlib=3.6.2=py310hecd8cb5_0
+  - matplotlib-base=3.6.2=py310h220de94_0
+  - matplotlib-inline=0.1.6=pyhd8ed1ab_0
+  - numpy=1.23.5=py310h9638375_0
+  - numpy-base=1.23.5=py310ha98c3c9_0
+  - pip:
+    - pip==23.2
+    - arviz==0.14.0
+    - asdf==2.14.3
+    - asdf-standard==1.0.3
+    - asdf-transform-schemas==0.3.0
+    - asdf-unit-schemas==0.1.0
+    - corner==2.2.1
+    - jax==0.4.3
+    - jaxlib==0.4.3
+    - numpyro==0.11.0
+    - numpyro-ext==0.1.dev4+g8a77701
+    - pandas==1.5.3
+    - photutils==1.6.0
+    - sep==1.2.1
+    - scipy==1.9.3
+    - tqdm==4.64.1

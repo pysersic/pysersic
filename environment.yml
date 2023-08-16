@@ -1,0 +1,22 @@
+name: pysersic
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python<=3.11
+  - pip
+  - arviz
+  - asdf
+  - astropy
+  - corner
+  - jax
+  - matplotlib
+  - numpy
+  - numpyro
+  - pandas
+  - photutils
+  - sep
+  - scipy
+  - tqdm
+  - pip:
+      - pysersic

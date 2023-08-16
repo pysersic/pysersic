@@ -24,6 +24,9 @@ First you should install jax. The easiest way to do this is to use ``` pip insta
 - scipy
 - tqdm
 
+There is a provided minimal `environment.yml` capturing the above in the base repo, as well as an `environment-lock.yml` which has a full set of versions specified for every dependency --- if you are having trouble with the installation, creating an environment using this file should ensure you have a single set of package versions that `pysersic` is known to work with. (We don't recommend using the lock yml in general, as `pysersic` should be kept up to date with new versions of its dependencies.)
+
+
 Next you can install pysersic! To install the latest stable release, you can simply pip install via 
 
 ```
@@ -70,6 +73,15 @@ map_dict = fitter.find_MAP() # Find the 'best-fit' parameters as the maximum-a-p
 svi_res = fitter.estimate_posterior('svi-flow') #Train a normalizing flow to estimate the posterior, retruns a PysersicResults object containing the posterior and other helper methods
 nuts_res = fitter.sample() #Sample the posterior using the No U-turn sampler (NUTS), retruns a PysersicResults object
 ```
+
+## Test Suite
+
+There is a growing set of tests that can be used to confirm the behavior of `pysersic` and its features is as expected. These tests run automatically on each pull request and merge. If you would like to run the tests yourself on your local machine, you can do so with the ``pytest`` package. Once installed, you can simply navigate to the ``tests`` directory and run: 
+
+```
+pytest
+```
+
 
 ## Citation
 If you use ```pysersic``` and find it useful, please do cite it. You can use the following BibTex, which currently reflects the arXiv version, and will be updated when the review with JOSS is completed. 
