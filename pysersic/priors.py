@@ -446,7 +446,7 @@ class PySersicMultiPrior(BasePrior):
         prior_list : Iterable
             List containing a prior dictionary for each source
         """
-        image = jnp.zeros((100,100)) # dummy image
+        image = -99
         properties = SourceProperties(image)
         if sky_type != 'none':
                 assert sky_guess is not None and sky_guess_err is not None, "If using a sky model must provide initial guess and uncertainty"
@@ -520,18 +520,19 @@ class SourceProperties():
             pixel by pixel mask, by default None
         """
         # Force back to numpy for photutils compatibility
-        self.image = np.array(image)
-        if mask is not None:
-            self.mask = np.array(mask) 
-        else:
-            self.mask = None
-        
-        if self.mask is not None:
-            self.cat = data_properties(self.image,mask=self.mask.astype(bool))
-            self.image = np.ma.masked_array(self.image, self.mask )
-        else:
-            self.cat = data_properties(self.image)
-        _ = self.measure_properties() 
+        if image != -99:
+            self.image = np.array(image)
+            if mask is not None:
+                self.mask = np.array(mask) 
+            else:
+                self.mask = None
+            
+            if self.mask is not None:
+                self.cat = data_properties(self.image,mask=self.mask.astype(bool))
+                self.image = np.ma.masked_array(self.image, self.mask )
+            else:
+                self.cat = data_properties(self.image)
+            _ = self.measure_properties() 
 
     def measure_properties(self,**kwargs) -> SourceProperties:
         """Measure default properties of the source
