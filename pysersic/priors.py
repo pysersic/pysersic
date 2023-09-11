@@ -503,9 +503,13 @@ class PySersicMultiPrior(BasePrior):
 
 class SourceProperties():
     """
-    A Class used to estimate initial guesses for source properties. If no guesses are provided, then the class will estimate them using the `photutls` package and the `data_properties()` function.
+    A Class used to estimate initial guesses for source properties. 
+    If no guesses are provided, then the class will estimate them 
+    using the `photutls` package and the `data_properties()` function.
     """
-    def __init__(self,image: np.array, mask:np.array =None):
+    def __init__(self,
+                 image: Union[np.array,jnp.array], 
+                 mask: Union[np.array,jnp.array] = None):
         """Initialize the a SourceProperties object
 
         Parameters
@@ -515,8 +519,12 @@ class SourceProperties():
         mask : np.array, optional
             pixel by pixel mask, by default None
         """
-        self.image = image 
-        self.mask = mask 
+        # Force back to numpy for photutils compatibility
+        self.image = np.array(image)
+        if mask is not None:
+            self.mask = np.array(mask) 
+        else:
+            self.mask = None
         
         if self.mask is not None:
             self.cat = data_properties(self.image,mask=self.mask.astype(bool))
@@ -540,8 +548,13 @@ class SourceProperties():
         self.set_sky_guess(**kwargs)
         return self
     
-    def set_sky_guess(self,sky_guess: Optional[float] = None,sky_guess_err:Optional[float] = None,n_pix_sample:int = 5, **kwargs)-> SourceProperties:
-        """Measure or set guess for initial sky background level. If no estimate is provided, the median of the n_pix_sample number of pixels around each edge is used
+    def set_sky_guess(self,
+                      sky_guess: Optional[float] = None,
+                      sky_guess_err:Optional[float] = None,
+                      n_pix_sample:int = 5, 
+                      **kwargs)-> SourceProperties:
+        """Measure or set guess for initial sky background level. 
+        If no estimate is provided, the median of the n_pix_sample number of pixels around each edge is used
 
         Parameters
         ----------
@@ -564,8 +577,13 @@ class SourceProperties():
             self.sky_guess_err = 2*std/np.sqrt(npix)
         return self
 
-    def set_flux_guess(self,flux_guess: Optional[float] =None,flux_guess_err: Optional[float] = None,**kwargs)-> SourceProperties:
-        """Measure or set guess for initial flux. If no estimate is provided, the flux of the source in estimated as the total flux within the sgmentatated region for the source
+    def set_flux_guess(self,
+                       flux_guess: Optional[float] = None,
+                       flux_guess_err: Optional[float] = None,
+                       **kwargs)-> SourceProperties:
+        """Measure or set guess for initial flux. 
+        If no estimate is provided, the flux of the source in estimated as the total flux 
+        within the sgmentatated region for the source
 
         Parameters
         ----------
@@ -594,8 +612,12 @@ class SourceProperties():
         self.flux_guess_err = flux_guess_err
         return self 
     
-    def set_r_eff_guess(self,r_eff_guess:Optional[float] = None, r_eff_guess_err:Optional[float] = None, **kwargs)-> SourceProperties:
-        """Measure or set guess for effective radius. If no estimate is provided, the r_eff of the source in estimated using photutils
+    def set_r_eff_guess(self,
+                        r_eff_guess:Optional[float] = None, 
+                        r_eff_guess_err:Optional[float] = None, 
+                        **kwargs)-> SourceProperties:
+        """Measure or set guess for effective radius. 
+        If no estimate is provided, the r_eff of the source in estimated using photutils
 
         Parameters
         ----------
@@ -620,8 +642,12 @@ class SourceProperties():
         self.r_eff_guess = r_eff_guess
         return self
 
-    def set_theta_guess(self,theta_guess: Optional[float] = None,**kwargs)-> SourceProperties:
-        """Measure or set guess for initial position angle. If no estimate is provided, the position angle of the source in estimated using the data_properties() function from photutils
+    def set_theta_guess(self,
+                        theta_guess: Optional[float] = None,
+                        **kwargs)-> SourceProperties:
+        """Measure or set guess for initial position angle. 
+        If no estimate is provided, the position angle of the source in estimated 
+        using the data_properties() function from photutils
 
         Parameters
         ----------
@@ -642,8 +668,12 @@ class SourceProperties():
         self.theta_guess = theta_guess 
         return self
     
-    def set_position_guess(self,position_guess: Optional[Iterable[float,float]]=None,**kwargs)-> SourceProperties:
-        """Measure or set guess for initial position. If no estimate is provided, the position of the source in estimated using the data_properties() function from photutils
+    def set_position_guess(self,
+                           position_guess: Optional[Iterable[float,float]]=None,
+                           **kwargs)-> SourceProperties:
+        """Measure or set guess for initial position. 
+        If no estimate is provided, the position of the source in estimated 
+        using the data_properties() function from photutils
 
         Parameters
         ----------
@@ -683,7 +713,11 @@ class SourceProperties():
             Pysersic prior object to be used to initialize FitSingle
         """
         
-        prior = PySersicSourcePrior(profile_type=profile_type, sky_type= sky_type,sky_guess=self.sky_guess,sky_guess_err=self.sky_guess_err, suffix=suffix)
+        prior = PySersicSourcePrior(profile_type=profile_type, 
+                                    sky_type = sky_type,
+                                    sky_guess=self.sky_guess,
+                                    sky_guess_err=self.sky_guess_err, 
+                                    suffix=suffix)
 
         # 3 properties common to all sources
         prior.set_gaussian_prior('flux',self.flux_guess,self.flux_guess_err)
@@ -693,7 +727,9 @@ class SourceProperties():
         if profile_type in ['exp','dev','sersic']:
             prior.set_truncated_gaussian_prior('r_eff', self.r_eff_guess,self.r_eff_guess_err, low = 0.5)
             prior.set_uniform_prior('ellip', 0, 0.9)
-            prior.set_custom_prior('theta', dist.VonMises(loc = self.theta_guess,concentration=2), reparam= infer.reparam.CircularReparam() )
+            prior.set_custom_prior('theta', 
+                                   dist.VonMises(loc = self.theta_guess,concentration=2), 
+                                   reparam= infer.reparam.CircularReparam() )
             if profile_type == 'sersic':
                 prior.set_uniform_prior('n', 0.65, 8)
 
@@ -701,7 +737,9 @@ class SourceProperties():
 
             prior.set_uniform_prior('f_1', 0.,1.)
 
-            prior.set_custom_prior('theta', dist.VonMises(loc = self.theta_guess,concentration=2), reparam= infer.reparam.CircularReparam() )
+            prior.set_custom_prior('theta', 
+                                   dist.VonMises(loc = self.theta_guess,concentration=2), 
+                                   reparam= infer.reparam.CircularReparam() )
 
             r_loc1 = self.r_eff_guess/1.5
             r_eff_guess_err1 = jnp.sqrt(self.r_eff_guess/1.5)
@@ -721,7 +759,10 @@ class SourceProperties():
         
         return prior
     
-    def visualize(self,figsize: Tuple[float,float]= (6.,6.),cmap:str = 'gray',scale: float = 1.)-> None:
+    def visualize(self,
+                  figsize: Tuple[float,float]= (6.,6.),
+                  cmap:str = 'gray',
+                  scale: float = 1.)-> None:
         """Display a figure summarizing the current guess for the source properties
 
         Parameters
