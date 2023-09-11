@@ -446,8 +446,7 @@ class PySersicMultiPrior(BasePrior):
         prior_list : Iterable
             List containing a prior dictionary for each source
         """
-        image = -99
-        properties = SourceProperties(image)
+        properties = SourceProperties(-99)
         if sky_type != 'none':
                 assert sky_guess is not None and sky_guess_err is not None, "If using a sky model must provide initial guess and uncertainty"
 
@@ -456,20 +455,27 @@ class PySersicMultiPrior(BasePrior):
         self.catalog = catalog
         self.all_priors = []
         self.N_sources = len(catalog['x'])
-        image = jnp.zeros((100,100)) # dummy image
+        
         
         #Loop through catalog to generate priors
         for ind in range(len(catalog['x'])):
             properties.set_flux_guess(catalog['flux'][ind])
             properties.set_r_eff_guess(r_eff_guess = catalog['r'][ind])
             properties.set_position_guess((catalog['x'][ind],catalog['y'][ind]) )
-            
+            if (sky_guess is not None) and (sky_guess_err is not None):
+                properties.set_sky_guess(sky_guess=sky_guess,sky_guess_err=sky_guess_err)
+            elif sky_guess is not None:
+                properties.set_sky_guess(sky_guess=sky_guess)
             try:
                 properties.set_theta_guess(catalog['theta'][ind])
             except:
                 pass 
             
-            prior = properties.generate_prior(catalog['type'][ind], sky_type= 'none', suffix  = f'_{ind:d}')
+            prior = properties.generate_prior(catalog['type'][ind], 
+                                              sky_type= sky_type,
+                                              sky_guess=sky_guess, 
+                                              sky_guess_err=sky_guess_err,
+                                              suffix  = f'_{ind:d}')
 
             self.all_priors.append(prior)
             self.reparam_dict.update(prior.reparam_dict)
@@ -571,11 +577,16 @@ class SourceProperties():
         SourceProperties
             returns self
         """
-        med, std, npix = estimate_sky(self.image, n_pix_sample= n_pix_sample)
         if sky_guess is None:
+            med, std, npix = estimate_sky(self.image, n_pix_sample= n_pix_sample)
             self.sky_guess = med
+        else:
+            self.sky_guess = sky_guess
         if sky_guess_err is None:
+            med, std, npix = estimate_sky(self.image, n_pix_sample= n_pix_sample)
             self.sky_guess_err = 2*std/np.sqrt(npix)
+        else:
+            self.sky_guess_err = sky_guess_err
         return self
 
     def set_flux_guess(self,
