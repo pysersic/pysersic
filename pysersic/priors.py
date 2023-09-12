@@ -462,19 +462,13 @@ class PySersicMultiPrior(BasePrior):
             properties.set_flux_guess(catalog['flux'][ind])
             properties.set_r_eff_guess(r_eff_guess = catalog['r'][ind])
             properties.set_position_guess((catalog['x'][ind],catalog['y'][ind]) )
-            if (sky_guess is not None) and (sky_guess_err is not None):
-                properties.set_sky_guess(sky_guess=sky_guess,sky_guess_err=sky_guess_err)
-            elif sky_guess is not None:
-                properties.set_sky_guess(sky_guess=sky_guess)
             try:
                 properties.set_theta_guess(catalog['theta'][ind])
             except:
-                pass 
+                properties.set_theta_guess(0)
             
             prior = properties.generate_prior(catalog['type'][ind], 
                                               sky_type= sky_type,
-                                              sky_guess=sky_guess, 
-                                              sky_guess_err=sky_guess_err,
                                               suffix  = f'_{ind:d}')
 
             self.all_priors.append(prior)
@@ -727,8 +721,6 @@ class SourceProperties():
         
         prior = PySersicSourcePrior(profile_type=profile_type, 
                                     sky_type = sky_type,
-                                    sky_guess=self.sky_guess,
-                                    sky_guess_err=self.sky_guess_err, 
                                     suffix=suffix)
 
         # 3 properties common to all sources
