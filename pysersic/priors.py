@@ -520,7 +520,7 @@ class SourceProperties():
             pixel by pixel mask, by default None
         """
         # Force back to numpy for photutils compatibility
-        if image != -99:
+        if not isinstance(image,int):
             self.image = np.array(image)
             if mask is not None:
                 self.mask = np.array(mask) 
