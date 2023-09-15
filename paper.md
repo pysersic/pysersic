@@ -30,11 +30,11 @@ The modern standard for measuring structural parameters of galaxies involves a f
 
 
 $$
-I(R) ∝ F_{\rm total} \exp \left[\left(\frac{R}{R_e}\right)^{1/n}-1\right],
+I(R) ∝ F_{\mathrm{total}} \exp \left[\left(\frac{R}{R_e}\right)^{1/n}-1\right],
 $$
 
 
-where the total flux, $F_{\rm total}$, half-light radius, $R_e$ and Sérsic index, $n$ are the parameters of interest to be fit and subsequently used to characterize a galaxy's morphology.
+where the total flux, $F_{\mathrm{total}}$, half-light radius, $R_e$ and Sérsic index, $n$ are the parameters of interest to be fit and subsequently used to characterize a galaxy's morphology.
 
 
 Here we present `pysersic`, a Bayesian framework created to facilitate the inference of structural parameters from galaxy images. It is written in pure `Python`, and built using the `jax` framework [@Bradbury:2018] allowing for just-in-time (JIT) compilation, auto-differentiation and seamless execution on CPUs, GPUs or TPUs. Inference is performed with the `numpyro` [@Phan:2019;@Bingham:2019] package utilizing gradient based methods, e.g., No U-Turn Sampling (NUTS) [@Hoffman:2014], for efficient and robust posterior estimation. `pysersic` was designed to have a user-friendly interface, allowing users to fit single or multiple sources in a few lines of code. It was also designed to scale to many images, such that it can be seamlessly integrated into current and future analysis pipelines.
@@ -50,7 +50,7 @@ Inference in `pysersic` is implemented using the `numpyro` probabilistic program
 
 # Code Description
 
-`pysersic` was designed to have a user-friendly API with sensible defaults. Tools are provided to automatically generate priors for all free parameters based on an initial characterization of a given image --- but can also easily be set manually. We provide default inference routines for NUTS MCMC and variational inference using neural flows. Users can access the underlying `numpyro` model if desired, to perform inference using any tools available within the `numpyro` ecosystem. The goal for `pysersic` is to provide a reasonable defaults for new users interested in a handful of galaxies, yet maintain the ability for advanced users to tweak options as necessary to perform inference for entire surveys.
+`pysersic` was designed to have a user-friendly API with sensible defaults. Tools are provided to automatically generate priors for all free parameters based on an initial characterization of a given image --- but can also easily be set manually. We provide default inference routines for NUTS MCMC and variational inference using neural flows. Users can access the underlying `numpyro` model if desired, to perform inference using any tools available within the `numpyro` ecosystem. The goal for `pysersic` is to provide reasonable defaults for new users interested in a handful of galaxies, yet maintain the ability for advanced users to tweak options as necessary to perform inference for entire surveys.
 
 A crucial component of any Sérsic fitting code is an efficient and accurate rendering algorithm. Sérsic profiles with high index, $n\gtrsim 3$ are notoriously difficult to render accurately given the steep increase in brightness as $r \rightarrow 0$. In `pysersic`, the `rendering` module is kept separate from the frontend API and inference modules, such that different algorithms can be interchanged and therefore easily tested (and hopefully encourage innovation as well). In this initial release, we provide three algorithms. The first is a traditional rendering algorithm in which the intrinsic profile is rendered in real space, with oversampling in the center to ensure accurate results for high index profiles. The second and third  methods render the profiles in Fourier space, providing accurate results even for strongly peaked profiles and avoiding artifacts due to pixelization. In `pysersic`, this is achieved by representing the profiles using a series of Gaussian following the algorithm presented in @Shajib:2019. We include one algorithm that is fully based in Fourier space, along with a version of the hybrid real-Fourier algorithm introduced in @Lang:2020 which helps avoid some of the aliasing present when rendering solely in Fourier space.
 
