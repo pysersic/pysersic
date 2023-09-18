@@ -6,7 +6,7 @@
 ![tests](https://github.com/pysersic/pysersic/actions/workflows/pytest.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
-pysersic is a code for fitting sersic profiles to galaxy images using Bayesian Inference. It is written in python using [jax](https://github.com/google/jax) with inference performed using [numpyro](https://github.com/pyro-ppl/numpyro)
+```pysersic``` is a code for fitting sersic profiles to galaxy images using Bayesian Inference. It is written in python using [jax](https://github.com/google/jax) with inference performed using [numpyro](https://github.com/pyro-ppl/numpyro). You can read more about the motivation for this software via the [JOSS Paper](https://joss.theoj.org/papers/10.21105/joss.05703#).
 
 ## Installation
 
@@ -84,23 +84,18 @@ pytest
 
 
 ## Citation
-If you use ```pysersic``` and find it useful, please do cite it. You can use the following BibTex, which currently reflects the arXiv version, and will be updated when the review with JOSS is completed. 
+If you use ```pysersic``` and find it useful, please do cite it. You can use the following BibTex.
 
 ```
-@ARTICLE{2023arXiv230605454P,
-       author = {{Pasha}, Imad and {Miller}, Tim B.},
-        title = "{pysersic: A Python package for determining galaxy structural properties via Bayesian inference, accelerated with jax}",
-      journal = {arXiv e-prints},
-     keywords = {Astrophysics - Astrophysics of Galaxies, Astrophysics - Instrumentation and Methods for Astrophysics},
-         year = 2023,
-        month = jun,
-          eid = {arXiv:2306.05454},
-        pages = {arXiv:2306.05454},
-          doi = {10.48550/arXiv.2306.05454},
-archivePrefix = {arXiv},
-       eprint = {2306.05454},
- primaryClass = {astro-ph.GA},
-       adsurl = {https://ui.adsabs.harvard.edu/abs/2023arXiv230605454P},
-      adsnote = {Provided by the SAO/NASA Astrophysics Data System}
-}
+@article{Pasha2023,
+        doi = {10.21105/joss.05703},
+        url = {https://doi.org/10.21105/joss.05703},
+        year = {2023},
+        publisher = {The Open Journal},
+        volume = {8},
+        number = {89},
+        pages = {5703},
+        author = {Imad Pasha and Tim B. Miller},
+        title = {pysersic: A Python package for determining galaxy structural properties via Bayesian inference, accelerated with jax},
+        journal = {Journal of Open Source Software} }
 ```
