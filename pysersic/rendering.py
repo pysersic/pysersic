@@ -703,8 +703,8 @@ class HybridRenderer(BaseRenderer):
         self.w_fourier = jnp.arange(self.n_sigma - self.num_pixel_render, dtype=jnp.int32)
 
         psf_X,psf_Y = jnp.meshgrid(jnp.arange(self.psf_shape[0]),jnp.arange(self.psf_shape[1]))
-        sig_x = jnp.sqrt( (self.pixel_PSF*(psf_X)**2).sum()/self.pixel_PSF.sum() - psf_X.mean()**2 )
-        sig_y = jnp.sqrt( (self.pixel_PSF*(psf_Y)**2).sum()/self.pixel_PSF.sum() - psf_Y.mean()**2 )
+        sig_x = jnp.sqrt( (self.pixel_PSF*(psf_X - psf_X.mean())**2).sum()/self.pixel_PSF.sum() )
+        sig_y = jnp.sqrt( (self.pixel_PSF*(psf_Y - psf_Y.mean())**2).sum()/self.pixel_PSF.sum() )
         self.sig_psf_approx = 0.5*(sig_x + sig_y)
 
         self.etas,self.betas = calculate_etas_betas(self.precision)
