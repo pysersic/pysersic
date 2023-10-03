@@ -10,7 +10,7 @@ from functools import partial
 from pysersic.exceptions import * 
 
 base_profile_types = ['sersic','doublesersic','pointsource','exp','dev']
-base_profile_params =dict( 
+base_profile_params =dict(
     zip(base_profile_types,
     [ ['xc','yc','flux','r_eff','n','ellip','theta'],
     ['xc','yc','flux','f_1', 'r_eff_1','n_1','ellip_1', 'r_eff_2','n_2','ellip_2','theta'],
@@ -53,6 +53,7 @@ class BaseRenderer(object):
         f1d1 = jnp.fft.rfftfreq(self.im_shape[0])
         f1d2 = jnp.fft.fftfreq(self.im_shape[1])
         self.FX,self.FY = jnp.meshgrid(f1d1,f1d2)
+        self.fft_shape = self.FX.shape
         fft_shift_arr_x = jnp.exp(jax.lax.complex(0.,-1.)*2.*3.1415*-1*(self.psf_shape[0]/2.-0.5)*self.FX)
         fft_shift_arr_y = jnp.exp(jax.lax.complex(0.,-1.)*2.*3.1415*-1*(self.psf_shape[1]/2.-0.5)*self.FY)
         self.PSF_fft = jnp.fft.rfft2(self.pixel_PSF, s = self.im_shape)*fft_shift_arr_x*fft_shift_arr_y
@@ -60,61 +61,29 @@ class BaseRenderer(object):
         #All the  renderers here these profile types
         self.profile_types = base_profile_types
         self.profile_params = base_profile_params
+        self.func_list = []
+        for profile_type in self.profile_types:
+            self.func_list.append(getattr(self, f'render_{profile_type}'))
 
-    def flat_sky(self,x:float)-> float:
-        """A constant sky background
+        self.fft_zeros = jnp.zeros(self.fft_shape)
+        self.img_zeros = jnp.zeros(self.img_shape)
 
-        Parameters
-        ----------
-        x : float
-            Background level
-        Returns
-        -------
-        float
-            Background level
-        """
-        return x
+        def conv_img(image):
+            img_fft = jnp.fft.rfft2(image)
+            conv_fft = img_fft*self.PSF_fft
+            conv_im = jnp.fft.irfft2(conv_fft, s= self.im_shape)
+            return conv_im
+        #self.conv_img = jit(conv_img)
 
-    def tilted_plane_sky(self, x:jax.numpy.array)->jax.numpy.array:
-        """Render a tilted plane sky background
+        def conv_fft(F_im):
+            im = jnp.fft.irfft2(F_im*self.PSF_fft, s= self.im_shape) 
+            return im
+        #self.conv_fft = jit(conv_fft)
 
-        Parameters
-        ----------
-        x : jax.numpy.array
-            An array containing three parameters specifying the background
-
-        Returns
-        -------
-        jax.numpy.array
-            The model of the sky
-        """
-        return x[0] + (self.X -  self.x_mid)*x[1] + (self.Y - self.y_mid)*x[2]
+        def combine_scene(F_im, int_im, obs_im):
+            return conv_fft(F_im)+  conv_img(int_im) + obs_im
+        self.combine_scene = jit(combine_scene)
     
-    def render_sky(self,
-            x: Union[None,float, jax.numpy.array],
-            sky_type: str
-            ) -> Union[float, jax.numpy.array]:
-        """Render a sky background
-
-        Parameters
-        ----------
-        x : Union[None,float, jax.numpy.array]
-            Parameters of the given sky
-        sky_type : str
-            Type of sky model
-
-        Returns
-        -------
-        Union[float, jax.numpy.array]
-            Rendered sky background
-        """
-        if sky_type is None:
-            return 0.
-        elif sky_type == 'flat':
-            return self.flat_sky(x)
-        else:
-            return self.tilted_plane_sky(x)
-
     @abstractmethod
     def render_sersic(self, xc,yc, flux, r_eff, n,ellip, theta):
         return NotImplementedError
@@ -189,6 +158,13 @@ class BaseRenderer(object):
         """
         return self.render_sersic(xc,yc, flux, r_eff, 4.,ellip, theta)
     
+    def render_for_model(self,param_dict, types, suffix):
+        ## collect parameters for each source from dictionary
+        ## loop over all sources
+        ## sum and combine
+
+        return NotImplementedError
+    
     def render_source(self,
             params: jax.numpy.array,
             profile_type: str)->jax.numpy.array :
@@ -207,8 +183,8 @@ class BaseRenderer(object):
             Rendered, observed model
         """
         render_func = getattr(self, f'render_{profile_type}')
-        im = render_func(*params)
-        return im
+        model_im = self.combine_scene( *render_func(*params) )
+        return model_im
 
 
 class PixelRenderer(BaseRenderer):
@@ -259,14 +235,6 @@ class PixelRenderer(BaseRenderer):
         self.Y_os = self.Y[self.x_os_lo:self.x_os_hi ,self.y_os_lo:self.y_os_hi ,jnp.newaxis,jnp.newaxis] + self.dy_os
 
 
-        #Set up and jit PSF convolution
-        def conv(image):
-            img_fft = jnp.fft.rfft2(image)
-            conv_fft = img_fft*self.PSF_fft
-            conv_im = jnp.fft.irfft2(conv_fft, s= self.im_shape)
-            return conv_im
-        self.conv = jit(conv)
-
         #Set up and jit intrinsic Sersic rendering with Oversampling
         def render_int_sersic(xc,yc, flux, r_eff, n,ellip, theta):
             im_no_os = render_sersic_2d(self.X,self.Y,xc,yc, flux, r_eff, n,ellip, theta)
@@ -311,8 +279,7 @@ class PixelRenderer(BaseRenderer):
             Rendered Sersic model
         """
         im_int = self.render_int_sersic(xc,yc, flux, r_eff, n,ellip, theta)
-        im = self.conv(im_int)
-        return im
+        return self.fft_zeros, im_int, self.img_zeros
     
     def render_doublesersic(self,
             xc: float, 
@@ -360,8 +327,8 @@ class PixelRenderer(BaseRenderer):
             Rendered double Sersic model
         """
         im_int = self.render_int_sersic(xc,yc, flux*f_1, r_eff_1, n_1,ellip_1, theta) + self.render_int_sersic(xc,yc, flux*(1.-f_1), r_eff_2, n_2,ellip_2, theta)
-        im = self.conv(im_int)
-        return im
+        return self.fft_zeros, im_int, self.img_zeros
+
     
     def render_pointsource(self, 
             xc: float, 
@@ -388,47 +355,8 @@ class PixelRenderer(BaseRenderer):
 
         shifted_psf = jax.scipy.ndimage.map_coordinates(self.pixel_PSF*flux, [self.X-dx,self.Y-dy], order = 1, mode = 'constant')
     
-        return shifted_psf
+        return self.fft_zeros,self.img_zeros, shifted_psf
     
-    def render_multi(self, 
-            type_list: Iterable, 
-            var_list: Iterable)-> jax.numpy.array:
-        """Function to render multiple sources in the same image
-
-        Parameters
-        ----------
-        type_list : Iterable
-            List of strings containing the types of sources
-        var_list : Iterable
-            List of arrays contiaining the variables for each profile
-
-        Returns
-        -------
-        jax.numpy.array
-            Rendered image
-        """
-        
-        int_im = jnp.zeros_like(self.X)
-        obs_im = jnp.zeros_like(self.X)
-
-        for ind in range(len(type_list)):
-            if type_list[ind] == 'pointsource':
-                obs_im = obs_im + self.render_pointsource(*var_list[ind])
-            elif type_list[ind] == 'sersic':
-                int_im = int_im + self.render_int_sersic(*var_list[ind])
-            elif type_list[ind] == 'exp':
-                xc,yc, flux, r_eff,ellip, theta = var_list[ind]
-                int_im = int_im + self.render_int_sersic(xc,yc, flux, r_eff,1.,ellip, theta)
-            elif type_list[ind] == 'dev':
-                xc,yc, flux, r_eff,ellip, theta = var_list[ind]
-                int_im = int_im + self.render_int_sersic(xc,yc, flux, r_eff,4.,ellip, theta)
-            elif type_list[ind] == 'doublesersic':
-                xc, yc, flux, f_1, r_eff_1, n_1, ellip_1, r_eff_2, n_2, ellip_2, theta = var_list[ind]
-                int_im = int_im + self.render_int_sersic(xc,yc, flux*f_1, r_eff_1, n_1,ellip_1, theta)
-                int_im = int_im + self.render_int_sersic(xc,yc, flux*(1.-f_1), r_eff_2, n_2,ellip_2, theta)
-
-        im = self.conv(int_im) + obs_im
-        return im
 
 class FourierRenderer(BaseRenderer):
     """
@@ -500,13 +428,6 @@ class FourierRenderer(BaseRenderer):
             return Fgal
         self.render_sersic_mog_fourier = jit(render_sersic_mog_fourier)
 
-        #Jit compile function to inv fft image
-        def conv_and_inv_FFT(F_im):
-            im = jnp.fft.irfft2(F_im*self.PSF_fft, s= self.im_shape) 
-            return im
-        self.conv_and_inv_FFT = jit(conv_and_inv_FFT)
-
-
     def render_sersic(self,
             xc: float,
             yc: float,
@@ -540,8 +461,7 @@ class FourierRenderer(BaseRenderer):
             Rendered Sersic model
         """
         F_im = self.render_sersic_mog_fourier(xc,yc, flux, r_eff, n,ellip, theta)
-        im = self.conv_and_inv_FFT(F_im)
-        return im
+        return F_im, self.img_zeros, self.img_zeros
 
     def render_doublesersic(self,
             xc: float, 
@@ -590,8 +510,8 @@ class FourierRenderer(BaseRenderer):
         """
         F_im_1 = self.render_sersic_mog_fourier(xc,yc, flux*f_1, r_eff_1, n_1,ellip_1, theta)
         F_im_2 = self.render_sersic_mog_fourier(xc,yc, flux*(1.-f_1), r_eff_2, n_2,ellip_2, theta)
-        im = self.conv_and_inv_FFT(F_im_1 + F_im_2)
-        return im
+        comb_F_im = F_im_1 + F_im_2
+        return comb_F_im, self.img_zeros, self.img_zeros
     
     def render_pointsource(self, 
             xc: float, 
@@ -614,48 +534,7 @@ class FourierRenderer(BaseRenderer):
             rendered pointsource model
         """
         F_im = render_pointsource_fourier(self.FX,self.FY,xc,yc,flux)
-        im = self.conv_and_inv_FFT(F_im)
-        return im
-
-    def render_multi(self, 
-            type_list: Iterable, 
-            var_list: Iterable)-> jax.numpy.array:
-        """Function to render multiple sources in the same image
-
-        Parameters
-        ----------
-        type_list : Iterable
-            List of strings containing the types of sources
-        var_list : Iterable
-            List of arrays contiaining the variables for each profile
-
-        Returns
-        -------
-        jax.numpy.array
-            Rendered image
-        """
-        
-        F_tot = jnp.zeros_like(self.FX)
-
-        for ind in range(len(type_list)):
-            if type_list[ind] == 'pointsource':
-                F_tot = F_tot + render_pointsource_fourier(self.FX,self.FY,*var_list[ind])
-            elif type_list[ind] == 'sersic':
-                F_tot = F_tot + self.render_sersic_mog_fourier(*var_list[ind])
-            elif type_list[ind] == 'exp':
-                xc,yc, flux, r_eff,ellip, theta = var_list[ind]
-                F_tot = F_tot + self.render_sersic_mog_fourier(xc,yc, flux, r_eff,1.,ellip, theta)
-            elif type_list[ind] == 'dev':
-                xc,yc, flux, r_eff,ellip, theta = var_list[ind]
-                F_tot = F_tot + self.render_sersic_mog_fourier(xc,yc, flux, r_eff,4.,ellip, theta)
-            elif type_list[ind] == 'doublesersic':
-                xc, yc, flux, f_1, r_eff_1, n_1, ellip_1, r_eff_2, n_2, ellip_2, theta = var_list[ind]
-                F_im_1 = self.render_sersic_mog_fourier(xc,yc, flux*f_1, r_eff_1, n_1,ellip_1, theta)
-                F_im_2 = self.render_sersic_mog_fourier(xc,yc, flux*(1.-f_1), r_eff_2, n_2,ellip_2, theta)
-                F_tot = F_tot + F_im_1 + F_im_2
-
-        im = self.conv_and_inv_FFT(F_tot)
-        return im
+        return F_im, self.img_zeros, self.img_zeros
 
 class HybridRenderer(BaseRenderer):
     """
@@ -747,11 +626,6 @@ class HybridRenderer(BaseRenderer):
             return Fgal,im_gal
         self.render_sersic_hyrbid = jax.jit(render_sersic_hybrid)
 
-        def conv_and_inv_FFT(F_im):
-            im = jnp.fft.irfft2(F_im*self.PSF_fft, s= self.im_shape) 
-            return im
-        self.conv_and_inv_FFT = jit(conv_and_inv_FFT)
-
     def render_sersic(self,
             xc: float,
             yc: float,
@@ -785,8 +659,7 @@ class HybridRenderer(BaseRenderer):
             Rendered Sersic model
         """
         F, im  = self.render_sersic_hyrbid(xc,yc, flux, r_eff, n,ellip, theta)
-        out = im + self.conv_and_inv_FFT(F)
-        return out
+        return F, self.img_zeros, im
 
     def render_doublesersic(self,
             xc: float, 
@@ -835,8 +708,7 @@ class HybridRenderer(BaseRenderer):
         """
         F_1, im_1 = self.render_sersic_hyrbid(xc,yc, flux*f_1, r_eff_1, n_1,ellip_1, theta)
         F_2, im_2 = self.render_sersic_hyrbid(xc,yc, flux*(1.-f_1), r_eff_2, n_2,ellip_2, theta)
-        im = im_1 + im_2  + self.conv_and_inv_FFT(F_1 + F_2)
-        return im
+        return F_1 + F_2, self.img_zeros, im_1 + im_2 
 
     def render_pointsource(self, 
             xc: float, 
@@ -859,56 +731,8 @@ class HybridRenderer(BaseRenderer):
             rendered pointsource model
         """
         F_im = render_pointsource_fourier(self.FX,self.FY,xc,yc,flux)
-        im = self.conv_and_inv_FFT(F_im)
-        return im
+        return F_im, self.img_zeros, self.img_zeros
 
-
-    def render_multi(self, 
-            type_list: Iterable, 
-            var_list: Iterable)-> jax.numpy.array:
-        """Function to render multiple sources in the same image
-
-        Parameters
-        ----------
-        type_list : Iterable
-            List of strings containing the types of sources
-        var_list : Iterable
-            List of arrays contiaining the variables for each profile
-
-        Returns
-        -------
-        jax.numpy.array
-            Rendered image
-        """
-        
-        F_tot = jnp.zeros_like(self.FX)
-        im_tot = jnp.zeros_like(self.X)
-
-        for ind in range(len(type_list)):
-            if type_list[ind] == 'pointsource':
-                F_tot = F_tot + render_pointsource_fourier(self.FX,self.FY,*var_list[ind])
-            elif type_list[ind] == 'sersic':
-                F_cur, im_cur  = self.render_sersic_hyrbid(*var_list[ind])
-                F_tot = F_tot + F_cur
-                im_tot = im_tot + im_cur
-            elif type_list[ind] == 'exp':
-                xc,yc, flux, r_eff,ellip, theta = var_list[ind]
-                F_cur, im_cur  = self.render_sersic_hyrbid(xc,yc, flux, r_eff,1.,ellip, theta)
-                F_tot = F_tot + F_cur
-                im_tot = im_tot + im_cur
-            elif type_list[ind] == 'dev':
-                xc,yc, flux, r_eff,ellip, theta = var_list[ind]
-                F_cur, im_cur  = self.render_sersic_hyrbid(xc,yc, flux, r_eff,4.,ellip, theta)
-                F_tot = F_tot + F_cur
-            elif type_list[ind] == 'doublesersic':
-                xc, yc, flux, f_1, r_eff_1, n_1, ellip_1, r_eff_2, n_2, ellip_2, theta = var_list[ind]
-                F_1, im_1 = self.render_sersic_hyrbid(xc,yc, flux*f_1, r_eff_1, n_1,ellip_1, theta)
-                F_2, im_2 = self.render_sersic_hyrbid(xc,yc, flux*(1.-f_1), r_eff_2, n_2,ellip_2, theta)
-                F_tot = F_tot + F_1 + F_2
-                im_tot = im_tot + im_1 + im_2
-
-        im = self.conv_and_inv_FFT(F_tot) + im_tot
-        return im
 
 @jax.jit
 def sersic1D(

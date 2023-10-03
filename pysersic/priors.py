@@ -47,10 +47,17 @@ class BaseSkyPrior(ABC):
         self.dist_dict = {}
         self.suffix = suffix
         self.type = 'Base'
+        self.repr_dict = {}
     @abstractmethod
     def sample(self,X: jnp.array,Y: jnp.array):
         return NotImplementedError
 
+    def __repr__(self,):
+        string = f"sky type - {self.type}\n"
+        for k,v in self.repr_dict.items():
+            string += f"{k} --- {v}\n"
+        return string
+    
 class NoSkyPrior(BaseSkyPrior):
     def __init__(self, sky_guess: float, sky_guess_err: float, suffix: str = ''):
         super().__init__(sky_guess, sky_guess_err, suffix)
@@ -66,6 +73,7 @@ class FlatSkyPrior(BaseSkyPrior):
                                 dist.Normal(),
                                 dist.transforms.AffineTransform(self.sky_guess,self.sky_guess_err),)
         self.type = 'Flat'
+        self.repr_dict["sky_back"] = f"Normal with mu = {self.sky_guess:.3e} and sd = {self.sky_guess_err:.3e}"
 
     def sample(self, X,Y):
         return sample('sky_back'+self.suffix, self.dist_dict['sky_back'+self.suffix])
@@ -84,12 +92,17 @@ class TiltedPlaneSkyPrior(BaseSkyPrior):
         self.dist_dict['sky_y_sl'+self.suffix] = dist.TransformedDistribution(
                                 dist.Normal(),
                                 dist.transforms.AffineTransform(0.,0.1*self.sky_guess_err),)
-        
+    
 
         self.reparam_dict['sky_back'+self.suffix] = infer.reparam.TransformReparam()
         self.reparam_dict['sky_x_sl'+self.suffix] = infer.reparam.TransformReparam()
         self.reparam_dict['sky_y_sl'+self.suffix] = infer.reparam.TransformReparam()
         self.type = 'Tilted-plane'
+
+        self.repr_dict["sky_back"] = f"Normal with mu = {self.sky_guess:.3e} and sd = {self.sky_guess_err:.3e}"
+        self.repr_dict["sky_x_sl"] = f"Normal with mu = 0. and sd = {self.sky_guess_err*0.1:.3e}"
+        self.repr_dict["sky_y_sl"] = f"Normal with mu = 0. and sd = {self.sky_guess_err*0.1:.3e}"
+
 
     def sample(self, X,Y):
 
@@ -158,6 +171,17 @@ class BasePrior(ABC):
         self.reparam_dict = new_reparam_dict
         self.dist_dict = new_dist_dict
         self.suffix = new_suffix
+
+        new_dist_dict = {}
+        for k,v in self.sky_prior.dist_dict:
+            new_dist_dict[name_change(k)] = self.sky_prior.dist_dict.pop(k)
+
+        new_reparam_dict = {} 
+        for k,v in self.sky_prior.dist_dict:
+            new_reparam_dict[name_change(k)] = self.sky_prior.reparam_dict.pop(k)
+
+        self.sky_prior.reparam_dict = new_reparam_dict
+        self.sky_prior.dist_dict = new_dist_dict
     
     def sample_sky(self,X: jax.numpy.array,Y: jax.numpy.array)-> float:
         return self.sky_prior.sample()
@@ -190,23 +214,6 @@ class BasePrior(ABC):
         """
         return self.dist_dict[var_name]
 
-    def __call__(self) -> jax.numpy.array:
-        """
-        Sample variables from prior
-
-        Returns
-        -------
-        jax.numpy.array
-            sampled variables
-        """
-
-        arr = []
-        for param,prior in self.dist_dict.items():
-            if issubclass(type(prior), dist.Distribution):
-                arr.append(sample(param+self.suffix, prior) )
-            else:
-                arr.append(prior)
-        return jnp.array(arr)# Probably change this to a dict
 
     def set_gaussian_prior(self,var_name: str, loc: float, scale: float) -> "PySersicSourcePrior":
         """
@@ -338,6 +345,21 @@ class BasePrior(ABC):
         self.repr_dict[var_name] = "Custom prior of type: "+ str(prior_dist.__class__)
         return self
     
+    def __call__(self) -> jax.numpy.array:
+        """
+        Sample variables from prior
+
+        Returns
+        -------
+        jax.numpy.array
+            sampled variables
+        """
+
+        res_dict = {}
+        for param,prior in self.dist_dict.items():
+            res_dict['param'] = sample(param+self.suffix, prior) 
+        return res_dict
+
 
 class PySersicSourcePrior(BasePrior):
     """
@@ -365,19 +387,13 @@ class PySersicSourcePrior(BasePrior):
         self.profile_type = profile_type
         self.param_names = base_profile_params[self.profile_type]
 
-    def __repr__(self, print_sky = True) -> str:
+    def __repr__(self) -> str:
         out = f"Prior for a {self.profile_type} source:"
         num_dash = len(out)
         out += "\n" + "-"*num_dash + "\n"
         for (var, descrip) in self.repr_dict.items():
             out += var + " ---  " + descrip + "\n"    
-        if print_sky: # This is not as dynamic as the parameter ones so will not update once set
-            out+= f'\nSky Type: {self.sky_type}\n'
-            if not self.sky_type == 'none':
-                out+=f'Sky level --- Normal w/ mu = {self.sky_guess:.1e}, sigma = {self.sky_guess_err:.1e}\n'
-                if self.sky_type == 'tilted-plane':
-                    out+=f'Sky x slope --- Normal w/ mu = {0}, sigma = {self.sky_guess_err*0.1:.1e}\n'
-                    out+=f'Sky y slope --- Normal w/ mu = {0}, sigma = {self.sky_guess_err*0.1:.1e}\n'
+        out += self.sky_prior.__repr__()
         return out
     
 
@@ -449,8 +465,8 @@ class PySersicMultiPrior(BasePrior):
         
         self.catalog = catalog
         self.N_sources = len(catalog['x'])
-        
-        
+        self.repr_list = []
+
         #Loop through catalog to generate priors
         for ind in range(len(catalog['x'])):
             properties.set_flux_guess(catalog['flux'][ind])
@@ -470,18 +486,19 @@ class PySersicMultiPrior(BasePrior):
             
             for k,v in dummy_prior.reparam_dict.items():
                 self.reparam_dict[k] = v
+            self.repr_list.append(dummy_prior.reparam_dict)
             del dummy_prior
     
     def __repr__(self,)-> str:
-        out = f"PySersicMultiPrior containing {len(self.all_priors):d} sources \n"
-        for i, source_prior in enumerate(self.all_priors):
-            out += f"\nSource {i:d} : " + source_prior.__repr__(print_sky = False)
-        out+= f'\nSky Type: {self.sky_type}\n'
-        if not self.sky_type == 'none':
-            out+=f'Sky level --- Normal w/ mu = {self.sky_guess:.1e}, sigma = {self.sky_prior.sky_guess_err:.1e}\n'
-            if self.sky_type == 'tilted-plane':
-                out+=f'Sky x slope --- Normal w/ mu = {0}, sigma = {self.sky_prior.sky_guess_err*0.1:.1e}\n'
-                out+=f'Sky y slope --- Normal w/ mu = {0}, sigma = {self.sky_prior.sky_guess_err*0.1:.1e}\n'
+        out = f"PySersicMultiPrior containing {self.N_sources:d} sources \n"
+        for i, (repr_dict, profile_type) in enumerate(zip(self.repr_list, self.catalog['type'] )):
+            out_cur = f"Prior for a {profile_type} source:"
+            num_dash = len(out_cur)
+            out_cur += "\n" + "-"*num_dash + "\n"
+            for (var, descrip) in repr_dict.items():
+                out_cur += var + " ---  " + descrip + "\n"  
+            out += out_cur  
+        out += self.sky_prior.__repr__()
         return out
 
 
