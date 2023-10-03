@@ -448,11 +448,13 @@ class PySersicMultiPrior(BasePrior):
             List containing a prior dictionary for each source
         """
         properties = SourceProperties(-99)
-        properties.set_sky_guess(sky_guess = sky_guess, sky_guess_err = sky_guess_err)
-        
-        if sky_type != 'none':
-                assert sky_guess is not None and sky_guess_err is not None, "If using a sky model must provide initial guess and uncertainty"
 
+        if sky_type != 'none':
+            assert sky_guess is not None and sky_guess_err is not None, "If using a sky model must provide initial guess and uncertainty"
+            properties.set_sky_guess(sky_guess = sky_guess, sky_guess_err = sky_guess_err)
+        else:
+            properties.set_sky_guess(sky_guess = 0., sky_guess_err = 0.)
+        
         super().__init__(sky_type = sky_type,sky_guess=sky_guess,sky_guess_err=sky_guess_err)
         
         self.catalog = catalog
@@ -574,16 +576,21 @@ class SourceProperties():
         SourceProperties
             returns self
         """
-        if sky_guess is None:
+
+        if sky_guess is None and hasattr(self, 'image'):
             med, std, npix = estimate_sky(self.image, n_pix_sample= n_pix_sample)
             self.sky_guess = med
-        else:
+        elif sky_guess is not None:
             self.sky_guess = sky_guess
-        if sky_guess_err is None:
+        else:
+            raise RuntimeError("Need to either supply image or sky_guess_err to source_properties class")
+        if sky_guess_err is None and hasattr(self, 'image'):
             med, std, npix = estimate_sky(self.image, n_pix_sample= n_pix_sample)
             self.sky_guess_err = 2*std/np.sqrt(npix)
-        else:
+        elif sky_guess_err is not None:
             self.sky_guess_err = sky_guess_err
+        else:
+            raise RuntimeError("Need to either supply image or sky_guess_Err to source_properties class")
         return self
 
     def set_flux_guess(self,

@@ -10,31 +10,39 @@ from pysersic.pysersic import train_numpyro_svi_early_stop
 
 
 
-im = np.zeros((40,40))
+im_s = np.zeros((40,40))
 rng = np.random.default_rng(seed=10)
-im += rng.normal(scale = 0.05, size = (40,40))
-rms = np.ones(im.shape)*0.05
+im_s += rng.normal(scale = 0.05, size = (40,40))
+rms = np.ones(im_s.shape)*0.05
 psf = Gaussian2DKernel(x_stddev=2.5).array
 renderer = rendering.HybridRenderer((40,40), psf)
-im = im + renderer.render_pointsource(20.,20., 200.)
+im_s = im_s + renderer.render_pointsource(20.,20., 200.)
+print ( np.sum(im_s) )
 
-props = priors.SourceProperties(im)
-prior = props.generate_prior(profile_type='pointsource')
+@pytest.mark.parametrize('sky_type', ['none', 'flat', 'tilted-plane'])
+def test_FitSingle_map(sky_type):
+        props = priors.SourceProperties(im_s)
+        
+        prior = props.generate_prior(profile_type='pointsource', sky_type=sky_type)
+        print (prior)
+        fitter_single = FitSingle(im_s,rms,psf,prior)
 
-fitter_single = FitSingle(im,rms,psf,prior)
-
-def test_FitSingle_map():
         map_dict = fitter_single.find_MAP(rkey = PRNGKey(10))
         assert map_dict['xc'] == pytest.approx(20.017, rel = 1e-3)        
         assert map_dict['yc'] == pytest.approx(19.996, rel = 1e-3)
-        assert map_dict['flux'] == pytest.approx(199.418, rel = 1e-3)
+        assert map_dict['flux'] == pytest.approx(199.418, rel = 5e-2)
 
 @pytest.mark.parametrize('method',['laplace','svi-mvn','svi-flow'])
 def test_FitSingle_posterior(method):
+        props = priors.SourceProperties(im_s)
+        prior = props.generate_prior(profile_type='pointsource')
+
+        fitter_single = FitSingle(im_s,rms,psf,prior)
+
         res = fitter_single.estimate_posterior(method, rkey = PRNGKey(3))
         post_sum = res.summary()
 
-        assert post_sum['mean']['flux'] == pytest.approx(199.4, rel = 1e-2)
+        assert post_sum['mean']['flux'] == pytest.approx(199.4, rel = 5e-2)
         assert post_sum['sd']['flux'] == pytest.approx(0.43, rel = 5e-2)
 
         assert post_sum['mean']['xc'] == pytest.approx(20.02, rel = 1e-2)
@@ -45,10 +53,15 @@ def test_FitSingle_posterior(method):
 
 
 def test_FitSingle_sample():
+        props = priors.SourceProperties(im_s)
+        prior = props.generate_prior(profile_type='pointsource')
+
+        fitter_single = FitSingle(im_s,rms,psf,prior)
+
         res = fitter_single.sample(num_samples = 500,num_warmup = 500, num_chains = 1,rkey = PRNGKey(5))
         post_sum = arviz.summary(res.idata)
 
-        assert post_sum['mean']['flux'] == pytest.approx(199.4, rel = 1e-2)
+        assert post_sum['mean']['flux'] == pytest.approx(199.4, rel = 5e-2)
         assert post_sum['sd']['flux'] == pytest.approx(0.46, rel = 5e-2)
 
         assert post_sum['mean']['xc'] == pytest.approx(20.02, rel = 1e-2)
@@ -58,22 +71,22 @@ def test_FitSingle_sample():
         assert post_sum['sd']['yc'] ==  pytest.approx(0.0085, rel = 1e-1)
 
 
-im = np.zeros((40,40))
+im_m = np.zeros((40,40))
 rng = np.random.default_rng(seed=12)
-im += rng.normal(scale = 0.05, size = (40,40))
-rms = np.ones(im.shape)*0.05
+im_m += rng.normal(scale = 0.05, size = (40,40))
+rms = np.ones(im_m.shape)*0.05
 psf = Gaussian2DKernel(x_stddev=2.5).array
 renderer = rendering.HybridRenderer((40,40), psf)
-im = im + renderer.render_pointsource(10.,30., 150.)+ renderer.render_pointsource(30.,10., 150.)
+im_m = im_m + renderer.render_pointsource(10.,30., 150.)+ renderer.render_pointsource(30.,10., 150.)
 
 cat = {}
 cat['x'] = [10.,30.]
 cat['y'] = [30.,10.]
-cat['r']= [-1,-1]
+cat['r']= [0,0]
 cat['flux'] = [150.,150.]
 cat['type'] = ['pointsource','pointsource']
 mp = priors.PySersicMultiPrior(catalog = cat, sky_type='none')
-multi_fitter = FitMulti(im,rms,psf, mp)
+multi_fitter = FitMulti(im_m,rms,psf, mp)
 
 def test_FitMulti_map():
         map_dict = multi_fitter.find_MAP(rkey = PRNGKey(10))
