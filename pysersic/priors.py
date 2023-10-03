@@ -54,7 +54,8 @@ class BasePrior(ABC):
         self.reparam_dict = {}
         self.sky_type = sky_type
         if sky_guess is None:
-            self.sky_guess = 0.0 
+            self.sky_guess = 0.0
+            self.sky_guess_err = 1e-5
         else:
             assert sky_guess is not None and sky_guess_err is not None, 'If using fitting a sky then must supply a guess and uncertainty on the background value'
             self.sky_guess = sky_guess
@@ -69,7 +70,7 @@ class BasePrior(ABC):
             
             self._set_dist('sky_back',dist.TransformedDistribution(
                                 dist.Normal(),
-                                dist.transforms.AffineTransform(sky_guess,sky_guess_err),)
+                                dist.transforms.AffineTransform(self.sky_guess,self.sky_guess_err),)
                             )
             self.reparam_dict['sky_back'] = infer.reparam.TransformReparam()
             self.sample_sky = self.sample_sky_flat
@@ -77,16 +78,16 @@ class BasePrior(ABC):
         elif self.sky_type == 'tilted-plane':
             self._set_dist('sky_back',dist.TransformedDistribution(
                                 dist.Normal(),
-                                dist.transforms.AffineTransform(sky_guess,sky_guess_err),)
+                                dist.transforms.AffineTransform(self.sky_guess,self.sky_guess_err),)
                             )
             self._set_dist('sky_x_sl',  dist.TransformedDistribution(
                                 dist.Normal(),
-                                dist.transforms.AffineTransform(0.0,0.1*sky_guess_err),)
+                                dist.transforms.AffineTransform(0.0,0.1*self.sky_guess_err),)
             )
 
             self._set_dist('sky_y_sl',dist.TransformedDistribution(
                                 dist.Normal(),
-                                dist.transforms.AffineTransform(0.0,0.1*sky_guess_err),)
+                                dist.transforms.AffineTransform(0.0,0.1*self.sky_guess_err),)
             )
             
             self.reparam_dict['sky_back'] = infer.reparam.TransformReparam()
@@ -188,7 +189,7 @@ class PySersicSourcePrior(BasePrior):
                 profile_type: str, 
                 sky_type: Optional[str] = 'none',
                 sky_guess: Optional[float]=None,
-                sky_guess_err: Optional[float] = None,
+                sky_guess_err: Optional[float]=None,
                 suffix: Optional[str] =  "") -> None:
         """Initialize PySersicSourcePrior class
 
@@ -447,6 +448,8 @@ class PySersicMultiPrior(BasePrior):
             List containing a prior dictionary for each source
         """
         properties = SourceProperties(-99)
+        properties.set_sky_guess(sky_guess = sky_guess, sky_guess_err = sky_guess_err)
+        
         if sky_type != 'none':
                 assert sky_guess is not None and sky_guess_err is not None, "If using a sky model must provide initial guess and uncertainty"
 
@@ -721,7 +724,9 @@ class SourceProperties():
         
         prior = PySersicSourcePrior(profile_type=profile_type, 
                                     sky_type = sky_type,
-                                    suffix=suffix)
+                                    suffix=suffix,
+                                    sky_guess=self.sky_guess,
+                                    sky_guess_err=self.sky_guess_err)
 
         # 3 properties common to all sources
         prior.set_gaussian_prior('flux',self.flux_guess,self.flux_guess_err)
@@ -849,7 +854,9 @@ def autoprior(image: np.array, profile_type: 'str', mask:np.array =None, sky_typ
     PySersicSourcePrior
         Prior object that can be used in initializing FitSingle
     """
+
     props = SourceProperties(image = image, mask = mask)
+    
     prior = props.generate_prior(profile_type = profile_type, sky_type = sky_type)
     return prior
 
