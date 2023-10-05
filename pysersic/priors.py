@@ -134,6 +134,7 @@ class BasePrior(ABC):
 
         if sky_guess is None:
             self.sky_guess = 0.0
+            self.sky_guess_err = 0.
         else:
             assert sky_guess is not None and sky_guess_err is not None, 'If using fitting a sky then must supply a guess and uncertainty on the background value'
             self.sky_guess = sky_guess
@@ -184,7 +185,7 @@ class BasePrior(ABC):
         self.sky_prior.dist_dict = new_dist_dict
     
     def sample_sky(self,X: jax.numpy.array,Y: jax.numpy.array)-> float:
-        return self.sky_prior.sample()
+        return self.sky_prior.sample(X,Y)
 
     def _set_dist(self, var_name: str, dist: dist.Distribution)-> None:
         """Set prior for a given variable
@@ -357,7 +358,7 @@ class BasePrior(ABC):
 
         res_dict = {}
         for param,prior in self.dist_dict.items():
-            res_dict['param'] = sample(param+self.suffix, prior) 
+            res_dict[param] = sample(param+self.suffix, prior) 
         return res_dict
 
 
@@ -386,6 +387,7 @@ class PySersicSourcePrior(BasePrior):
         assert profile_type in base_profile_types
         self.profile_type = profile_type
         self.param_names = base_profile_params[self.profile_type]
+        self.repr_dict = {}
 
     def __repr__(self) -> str:
         out = f"Prior for a {self.profile_type} source:"
@@ -412,8 +414,9 @@ class PySersicSourcePrior(BasePrior):
             True if all variable for given type are present with no extra, False otherwise
         """
         missing = []
+
         for var in self.param_names:
-            if not hasattr(self, f"{var + self.suffix}_prior_dist"):
+            if not var in self.dist_dict.keys():
                 missing.append(var)
         
         extra = []
@@ -459,8 +462,11 @@ class PySersicMultiPrior(BasePrior):
         """
         properties = SourceProperties(-99)
         if sky_type != 'none':
-                assert sky_guess is not None and sky_guess_err is not None, "If using a sky model must provide initial guess and uncertainty"
-
+            assert sky_guess is not None and sky_guess_err is not None, "If using a sky model must provide initial guess and uncertainty"
+            properties.set_sky_guess(sky_guess = sky_guess, sky_guess_err = sky_guess_err)
+        else:
+            properties.set_sky_guess(sky_guess = 0., sky_guess_err = 0.)
+        
         super().__init__(sky_type = sky_type,sky_guess=sky_guess,sky_guess_err=sky_guess_err)
         
         self.catalog = catalog
@@ -486,7 +492,7 @@ class PySersicMultiPrior(BasePrior):
             
             for k,v in dummy_prior.reparam_dict.items():
                 self.reparam_dict[k] = v
-            self.repr_list.append(dummy_prior.reparam_dict)
+            self.repr_list.append(dummy_prior.repr_dict)
             del dummy_prior
     
     def __repr__(self,)-> str:
@@ -723,7 +729,9 @@ class SourceProperties():
         
         prior = PySersicSourcePrior(profile_type=profile_type, 
                                     sky_type = sky_type,
-                                    suffix=suffix)
+                                    suffix=suffix,
+                                    sky_guess=self.sky_guess,
+                                    sky_guess_err=self.sky_guess_err)
 
         # 3 properties common to all sources
         prior.set_gaussian_prior('flux',self.flux_guess,self.flux_guess_err)

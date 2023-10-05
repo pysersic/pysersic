@@ -1,7 +1,7 @@
 import pytest
 import jax.numpy as jnp
 import numpy as np
-from pysersic.priors import BasePrior, PySersicMultiPrior, PySersicSourcePrior, SourceProperties, estimate_sky
+from pysersic.priors import BasePrior, PySersicMultiPrior, PySersicSourcePrior, SourceProperties, estimate_sky, NoSkyPrior,FlatSkyPrior, TiltedPlaneSkyPrior
 from numpyro.handlers import seed
 from numpyro import distributions as dist
  
@@ -17,8 +17,8 @@ def test_SourceProperties(mask):
     test_im = jnp.ones((100,100))
     SP = SourceProperties(test_im, mask = mask)
     SP.measure_properties()
-    attribues = ['sky_guess','sky_guess_err', 'flux_guess','flux_guess_err', 'r_eff_guess','r_eff_guess_err','xc_guess','yc_guess']
-    for var in attribues:
+    attributes = ['sky_guess','sky_guess_err', 'flux_guess','flux_guess_err', 'r_eff_guess','r_eff_guess_err','xc_guess','yc_guess']
+    for var in attributes:
         assert hasattr(SP, var)
 
 @pytest.mark.parametrize('prof, var_names', zip(prof_names,prof_vars) )
@@ -31,19 +31,19 @@ def test_sky_sampling():
     x = jnp.arange(100)
     X,Y = jnp.meshgrid(x,x)
 
-    prior_class = BasePrior(sky_type = 'none')
+    prior_class = NoSkyPrior(sky_guess=0, sky_guess_err=1.)
     with seed(rng_seed=1):
-        params_1 = prior_class.sample_sky(X,Y)
+        params_1 = prior_class.sample(X,Y)
     assert params_1 == 0
 
-    prior_class = BasePrior(sky_type = 'flat', sky_guess = 0, sky_guess_err = 1)
+    prior_class = FlatSkyPrior(sky_guess = 0, sky_guess_err = 1)
     with seed(rng_seed=1):
-        params_2 = prior_class.sample_sky(X,Y)
+        params_2 = prior_class.sample(X,Y)
     assert params_2.shape == () # Should be single value
 
-    prior_class = BasePrior(sky_type = 'tilted-plane', sky_guess = 0, sky_guess_err = 1)
+    prior_class = TiltedPlaneSkyPrior(sky_guess = 0, sky_guess_err = 1)
     with seed(rng_seed=1):
-        params_3 = prior_class.sample_sky(X,Y)
+        params_3 = prior_class.sample(X,Y)
     assert params_3.shape == (100,100) # Should be 2D array 
 
 def test_PySersicSourcePrior():
@@ -53,9 +53,9 @@ def test_PySersicSourcePrior():
     prior.set_uniform_prior('flux', 0, 100)
     with seed(rng_seed=1):
         params = prior()
-    assert params[0] == pytest.approx(8.852981, rel=1e-5)
-    assert params[1] == pytest.approx(8.907836, rel=1e-5)
-    assert params[2] == pytest.approx(37.12473, rel=1e-5)
+    assert params['xc'] == pytest.approx(8.852981, rel=1e-5)
+    assert params['yc'] == pytest.approx(8.907836, rel=1e-5)
+    assert params['flux'] == pytest.approx(37.12473, rel=1e-5)
 
 def test_PySersicMultiPrior():
     catalog = {}
@@ -68,13 +68,23 @@ def test_PySersicMultiPrior():
     mp = PySersicMultiPrior(catalog)
     with seed(rng_seed=1):
         params = mp()
-
-    assert params[0] == pytest.approx([ 8.852981, 18.907837, 93.42897 ], rel=1e-5)
-    assert params[1] == pytest.approx([1.5656178e+01,  1.3875072e+01,  1.2103964e+02,
-                 9.109129e+00,  3.2803586e-01, -4.2930365e-02] , rel=1e-5)
-    assert params[2] == pytest.approx([ 1.82923260e+01,  1.13821745e+01,  1.21627632e+02,
-                3.357822e+00,  7.022609e+00,  8.82269740e-02,
-                -6.36531591e-01 ], rel=1e-5)
+    
+    assert params['flux_0'] == pytest.approx(77.05961, abs = 1e-4)
+    assert params['xc_0'] == pytest.approx(8.90784, abs = 1e-4)
+    assert params['yc_0'] == pytest.approx(19.67145, abs = 1e-4)
+    assert params['flux_1'] == pytest.approx(113.12357, abs = 1e-4)
+    assert params['xc_1'] == pytest.approx(13.87507, abs = 1e-4)
+    assert params['yc_1'] == pytest.approx(16.05198, abs = 1e-4)
+    assert params['r_eff_1'] == pytest.approx(9.10913, abs = 1e-4)
+    assert params['ellip_1'] == pytest.approx(0.32804, abs = 1e-4)
+    assert params['theta_1'] == pytest.approx(-0.04293, abs = 1e-4)
+    assert params['flux_2'] == pytest.approx(65.84653, abs = 1e-4)
+    assert params['xc_2'] == pytest.approx(21.38217, abs = 1e-4)
+    assert params['yc_2'] == pytest.approx(11.08138, abs = 1e-4)
+    assert params['r_eff_2'] == pytest.approx(3.35782, abs = 1e-4)
+    assert params['ellip_2'] == pytest.approx(0.78032, abs = 1e-4)
+    assert params['theta_2'] == pytest.approx(0.78913, abs = 1e-4)
+    assert params['n_2'] == pytest.approx(4.79926, abs = 1e-4)
     
 def test_sky_estimate():
     rng = np.random.default_rng(1234567)
