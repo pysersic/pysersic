@@ -41,6 +41,17 @@ base_profile_params =dict(
 
 class BaseSkyPrior(ABC):
     def __init__(self,sky_guess: float, sky_guess_err: float, suffix: str = ''):
+        """Base class for sky priors
+
+        Parameters
+        ----------
+        sky_guess : float
+            Initial guess for level of background, by default None
+        sky_guess_err : float
+            Uncertainty on initial guess, by default None
+        suffix : str, optional
+            suffix to be added on end of variables, by default ''
+        """
         self.sky_guess = sky_guess
         self.sky_guess_err = sky_guess_err
         self.reparam_dict = {}
@@ -48,6 +59,7 @@ class BaseSkyPrior(ABC):
         self.suffix = suffix
         self.type = 'Base'
         self.repr_dict = {}
+    
     @abstractmethod
     def sample(self,X: jnp.array,Y: jnp.array):
         return NotImplementedError
@@ -60,6 +72,17 @@ class BaseSkyPrior(ABC):
     
 class NoSkyPrior(BaseSkyPrior):
     def __init__(self, sky_guess: float, sky_guess_err: float, suffix: str = ''):
+        """Class for no sky model
+
+        Parameters
+        ----------
+        sky_guess : float
+            Initial guess for level of background, by default None
+        sky_guess_err : float
+            Uncertainty on initial guess, by default None
+        suffix : str, optional
+            suffix to be added on end of variables, by default ''
+        """
         super().__init__(sky_guess, sky_guess_err, suffix)
         self.type = 'None'
     def sample(self,X,Y):
@@ -67,6 +90,17 @@ class NoSkyPrior(BaseSkyPrior):
     
 class FlatSkyPrior(BaseSkyPrior):
     def __init__(self, sky_guess: float, sky_guess_err: float, suffix: str = ''):
+        """Class for sky model of constant background
+
+        Parameters
+        ----------
+        sky_guess : float
+            Initial guess for level of background, by default None
+        sky_guess_err : float
+            Uncertainty on initial guess, by default None
+        suffix : str, optional
+            suffix to be added on end of variables, by default ''
+        """
         super().__init__(sky_guess, sky_guess_err, suffix)
         self.reparam_dict['sky_back'+self.suffix] = infer.reparam.TransformReparam()
         self.dist_dict['sky_back'+self.suffix] = dist.TransformedDistribution(
@@ -79,7 +113,19 @@ class FlatSkyPrior(BaseSkyPrior):
         return sample('sky_back'+self.suffix, self.dist_dict['sky_back'+self.suffix])
 
 class TiltedPlaneSkyPrior(BaseSkyPrior):
+
     def __init__(self, sky_guess: float, sky_guess_err: float, suffix: str = ''):
+        """Class for tilted-plane sky model
+
+        Parameters
+        ----------
+        sky_guess : float
+            Initial guess for level of background, by default None
+        sky_guess_err : float
+            Uncertainty on initial guess, by default None
+        suffix : str, optional
+            suffix to be added on end of variables, by default ''
+        """
         super().__init__(sky_guess, sky_guess_err, suffix)
         
         
@@ -126,6 +172,12 @@ class BasePrior(ABC):
         ----------
         sky_type : str, optional
             Type of sky mode to use, one of: none,flat or tilted-plane, by default 'none'
+        sky_guess : float
+            Initial guess for level of background, by default None
+        sky_guess_err : float
+            Uncertainty on initial guess, by default None
+        suffix : str, optional
+            suffix to be added on end of variables, by default ''
         """
         self.reparam_dict = {}
         self.dist_dict = {}
@@ -154,6 +206,12 @@ class BasePrior(ABC):
     
 
     def update_suffix(self, new_suffix: str):
+        """Change suffix for variable names
+
+        Parameters
+        ----------
+        new_suffix : str
+        """
         old_suffix = copy(self.suffix)
 
         if len(old_suffix) == 0: # If no suffix then add
@@ -162,29 +220,45 @@ class BasePrior(ABC):
             name_change = lambda s: s.replace(old_suffix, new_suffix)
 
         new_dist_dict = {}
-        for k,v in self.dist_dict:
-            new_dist_dict[name_change(k)] = self.dist_dict.pop(k)
+        for k,v in self.dist_dict.items():
+            new_dist_dict[name_change(k)] = self.dist_dict[k]
 
         new_reparam_dict = {} 
-        for k,v in self.dist_dict:
-            new_reparam_dict[name_change(k)] = self.reparam_dict.pop(k)
+        for k,v in self.dist_dict.items():
+            new_reparam_dict[name_change(k)] = self.reparam_dict[k]
 
         self.reparam_dict = new_reparam_dict
         self.dist_dict = new_dist_dict
         self.suffix = new_suffix
 
         new_dist_dict = {}
-        for k,v in self.sky_prior.dist_dict:
-            new_dist_dict[name_change(k)] = self.sky_prior.dist_dict.pop(k)
+        for k,v in self.sky_prior.dist_dict.items():
+            new_dist_dict[name_change(k)] = self.sky_prior.dist_dict[k]
 
         new_reparam_dict = {} 
-        for k,v in self.sky_prior.dist_dict:
-            new_reparam_dict[name_change(k)] = self.sky_prior.reparam_dict.pop(k)
+        for k,v in self.sky_prior.dist_dict.items():
+            new_reparam_dict[name_change(k)] = self.sky_prior.reparam_dict[k]
 
         self.sky_prior.reparam_dict = new_reparam_dict
         self.sky_prior.dist_dict = new_dist_dict
+        self.sky_prior.suffix = new_suffix
     
     def sample_sky(self,X: jax.numpy.array,Y: jax.numpy.array)-> float:
+        """Sample sky parameters and return sky model
+
+        Parameters
+        ----------
+        X : jax.numpy.array
+            2D mesh grid of pixel x pixel indices
+        Y : jax.numpy.array
+            2D mesh grid of pixel y pixel indices
+
+
+        Returns
+        -------
+        float
+            sampled and rendered sky model
+        """
         return self.sky_prior.sample(X,Y)
 
     def _set_dist(self, var_name: str, dist: dist.Distribution)-> None:
@@ -358,7 +432,7 @@ class BasePrior(ABC):
 
         res_dict = {}
         for param,prior in self.dist_dict.items():
-            res_dict[param] = sample(param+self.suffix, prior) 
+            res_dict[param] = sample(param, prior) 
         return res_dict
 
 
@@ -380,8 +454,12 @@ class PySersicSourcePrior(BasePrior):
             Type of profile
         sky_type : Optional[str], optional
             Type of sky model to use, one of: none, flat, tilted-plane, by default 'none'
+        sky_guess : float
+            Initial guess for level of background, by default None
+        sky_guess_err : float
+            Uncertainty on initial guess, by default None
         suffix : Optional[str], optional
-            Additional suffix to add to each variable name, used in PySersicMultiPrior, by default ""
+            Additional suffix to add to each variable name, by default ""
         """
         super().__init__(sky_type= sky_type,sky_guess=sky_guess,sky_guess_err=sky_guess_err, suffix = suffix)
         assert profile_type in base_profile_types
@@ -442,7 +520,8 @@ class PySersicMultiPrior(BasePrior):
             catalog: Union[pandas.DataFrame,dict, np.recarray],
             sky_type: Optional[str] = 'none', 
             sky_guess: Optional[float] = None,
-            sky_guess_err: Optional[float] = None    
+            sky_guess_err: Optional[float] = None,  
+            suffix: Optional[str] = ''  
             )-> None:
         """
         Ingest a catalog-like data structure containing prior positions and parameters for multiple sources in a single image. 
@@ -454,11 +533,15 @@ class PySersicMultiPrior(BasePrior):
         image : jax.numpy.array
             science image
         catalog : Union[pandas.DataFrame,dict, np.recarray]
-            Object containing information about the sources to be fit
-        Returns
-        -------
-        prior_list : Iterable
-            List containing a prior dictionary for each source
+            Object containing information about the sources to be 
+        sky_type : Optional[str], optional
+            Type of sky model to use, one of: none, flat, tilted-plane, by default 'none'
+        sky_guess : float
+            Initial guess for level of background, by default None
+        sky_guess_err : float
+            Uncertainty on initial guess, by default None
+        suffix : Optional[str], optional
+            Additional suffix to add to each variable name, by default ""
         """
         properties = SourceProperties(-99)
         if sky_type != 'none':
@@ -472,6 +555,7 @@ class PySersicMultiPrior(BasePrior):
         self.catalog = catalog
         self.N_sources = len(catalog['x'])
         self.repr_list = []
+        self.suffix = suffix
 
         #Loop through catalog to generate priors
         for ind in range(len(catalog['x'])):
@@ -485,7 +569,7 @@ class PySersicMultiPrior(BasePrior):
             
             dummy_prior = properties.generate_prior(catalog['type'][ind], 
                                               sky_type= 'none',
-                                              suffix  = f'_{ind:d}'+self.suffix)
+                                              suffix  = f'_{ind:d}{suffix}')
 
             for k,v in dummy_prior.dist_dict.items():
                 self._set_dist(k,v)

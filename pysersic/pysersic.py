@@ -356,8 +356,8 @@ class FitSingle(BaseFitter):
 
             obs = out + sky
             if return_model:
-                deterministic('model', obs)
-            self.loss_func(obs, self.data, self.rms, self.mask)
+                deterministic(f'model{self.prior.suffix}', obs)
+            self.loss_func(obs, self.data, self.rms, self.mask, suffix = self.prior.suffix)
         return model
 
     
@@ -416,12 +416,10 @@ class FitMulti(BaseFitter):
             sky = self.prior.sample_sky(self.renderer.X, self.renderer.Y)
 
             obs = out + sky
-
-            if return_model:
-                obs = deterministic('model', obs)
             
-            loss = self.loss_func(obs, self.data, self.rms, self.mask)
-            return loss
+            if return_model:
+                deterministic(f'model{self.prior.suffix}', obs)
+            self.loss_func(obs, self.data, self.rms, self.mask, suffix = self.prior.suffix)
 
         return model
 

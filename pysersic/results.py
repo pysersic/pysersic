@@ -163,7 +163,7 @@ class PySersicResults():
             for var in var_names:
                 if ('base' in var) or ('auto' in var) or ('unwrapped' in var):
                     to_drop.append(var)
-                elif var == 'model':
+                elif 'model' in var:
                     to_drop.append(var)
                     if save_model:
                         self.models = data['posterior'][var]
