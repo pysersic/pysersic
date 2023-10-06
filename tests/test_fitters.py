@@ -6,6 +6,7 @@ from jax.random import PRNGKey
 import arviz
 from numpyro import distributions as dist,infer,sample, optim
 from pysersic.pysersic import train_numpyro_svi_early_stop
+from pysersic.priors import estimate_sky
 
 
 
@@ -91,7 +92,12 @@ cat['type'] = ['pointsource','pointsource']
 mp = priors.PySersicMultiPrior(catalog = cat, sky_type='none')
 multi_fitter = FitMulti(im_m,rms,psf, mp)
 
-def test_FitMulti_map():
+sky_guess, sky_guess_err, n_pix_sky = estimate_sky(im_m)
+@pytest.mark.parametrize('sky_type', ['none', 'flat', 'tilted-plane'])
+def test_FitMulti_map(sky_type):
+        mp = priors.PySersicMultiPrior(catalog = cat, sky_type=sky_type,sky_guess  = sky_guess, sky_guess_err=sky_guess_err)
+        multi_fitter = FitMulti(im_m,rms,psf, mp)
+
         map_dict = multi_fitter.find_MAP(rkey = PRNGKey(10))
 
         assert map_dict['source_0']['xc'] == pytest.approx(10., rel = 1e-3)        
