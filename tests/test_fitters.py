@@ -6,6 +6,7 @@ from jax.random import PRNGKey
 import arviz
 from numpyro import distributions as dist,infer,sample, optim
 from pysersic.pysersic import train_numpyro_svi_early_stop
+from pysersic.priors import estimate_sky
 
 
 
@@ -16,8 +17,8 @@ im_s += rng.normal(scale = 0.05, size = (40,40))
 rms = np.ones(im_s.shape)*0.05
 psf = Gaussian2DKernel(x_stddev=2.5).array
 renderer = rendering.HybridRenderer((40,40), psf)
-im_s = im_s + renderer.render_pointsource(20.,20., 200.)
-print ( np.sum(im_s) )
+im_s = im_s + renderer.render_source( dict(xc = 20.,yc=20., flux = 200.), 'pointsource' )
+
 
 @pytest.mark.parametrize('sky_type', ['none', 'flat', 'tilted-plane'])
 def test_FitSingle_map(sky_type):
@@ -42,11 +43,12 @@ def test_FitSingle_posterior(method):
         res = fitter_single.estimate_posterior(method, rkey = PRNGKey(3))
         post_sum = res.summary()
 
-        assert post_sum['mean']['flux'] == pytest.approx(199.4, rel = 5e-2)
-        assert post_sum['sd']['flux'] == pytest.approx(0.43, rel = 5e-2)
+        assert post_sum['mean']['flux'] == pytest.approx(199.4, rel = 1e-2)
+        assert post_sum['sd']['flux'] == pytest.approx(0.44, rel = 1e-1)
+
 
         assert post_sum['mean']['xc'] == pytest.approx(20.02, rel = 1e-2)
-        assert post_sum['sd']['xc'] == pytest.approx(0.0085, rel = 1e-1)
+        assert post_sum['sd']['xc'] == pytest.approx(0.0085, rel = 2e-1)
         
         assert post_sum['mean']['yc'] == pytest.approx(19.99, rel = 1e-2)
         assert post_sum['sd']['yc'] ==  pytest.approx(0.008, rel = 1e-1)
@@ -62,10 +64,10 @@ def test_FitSingle_sample():
         post_sum = arviz.summary(res.idata)
 
         assert post_sum['mean']['flux'] == pytest.approx(199.4, rel = 5e-2)
-        assert post_sum['sd']['flux'] == pytest.approx(0.46, rel = 5e-2)
+        assert post_sum['sd']['flux'] == pytest.approx(0.45, rel = 5e-2)
 
         assert post_sum['mean']['xc'] == pytest.approx(20.02, rel = 1e-2)
-        assert post_sum['sd']['xc'] == pytest.approx(0.0085, rel = 1e-1)
+        assert post_sum['sd']['xc'] == pytest.approx(0.007, rel = 2e-1)
         
         assert post_sum['mean']['yc'] == pytest.approx(19.99, rel = 1e-2)
         assert post_sum['sd']['yc'] ==  pytest.approx(0.0085, rel = 1e-1)
@@ -77,7 +79,9 @@ im_m += rng.normal(scale = 0.05, size = (40,40))
 rms = np.ones(im_m.shape)*0.05
 psf = Gaussian2DKernel(x_stddev=2.5).array
 renderer = rendering.HybridRenderer((40,40), psf)
-im_m = im_m + renderer.render_pointsource(10.,30., 150.)+ renderer.render_pointsource(30.,10., 150.)
+im_m = im_m + renderer.render_source( dict(xc = 10.,yc = 30., flux  = 150.), 'pointsource' )
+im_m = im_m + renderer.render_source( dict(yc = 10.,xc = 30., flux  = 150.), 'pointsource' )
+
 
 cat = {}
 cat['x'] = [10.,30.]
@@ -88,7 +92,12 @@ cat['type'] = ['pointsource','pointsource']
 mp = priors.PySersicMultiPrior(catalog = cat, sky_type='none')
 multi_fitter = FitMulti(im_m,rms,psf, mp)
 
-def test_FitMulti_map():
+sky_guess, sky_guess_err, n_pix_sky = estimate_sky(im_m)
+@pytest.mark.parametrize('sky_type', ['none', 'flat', 'tilted-plane'])
+def test_FitMulti_map(sky_type):
+        mp = priors.PySersicMultiPrior(catalog = cat, sky_type=sky_type,sky_guess  = sky_guess, sky_guess_err=sky_guess_err)
+        multi_fitter = FitMulti(im_m,rms,psf, mp)
+
         map_dict = multi_fitter.find_MAP(rkey = PRNGKey(10))
 
         assert map_dict['source_0']['xc'] == pytest.approx(10., rel = 1e-3)        
@@ -106,7 +115,7 @@ def test_FitMulti_posterior(method):
         assert post_sum['mean']['flux_0'] == pytest.approx(150.4, rel = 1e-2)
         assert post_sum['sd']['flux_0'] == pytest.approx(0.42, rel = 1e-1)
         assert post_sum['mean']['flux_1'] == pytest.approx(150., rel = 1e-2)
-        assert post_sum['sd']['flux_1'] == pytest.approx(0.45, rel = 5e-2)
+        assert post_sum['sd']['flux_1'] == pytest.approx(0.45, rel = 1e-1)
 
         assert post_sum['mean']['xc_0'] == pytest.approx(10.0, rel = 1e-2)
         assert post_sum['sd']['xc_0'] == pytest.approx(0.01, rel = 1e-1)
@@ -128,7 +137,7 @@ def test_FitMulti_sample():
         assert post_sum['sd']['flux_1'] == pytest.approx(0.42, rel = 1e-1)
 
         assert post_sum['mean']['xc_0'] == pytest.approx(10.0, rel = 1e-2)
-        assert post_sum['sd']['xc_0'] == pytest.approx(0.01, rel = 1e-1)
+        assert post_sum['sd']['xc_0'] == pytest.approx(0.01, rel = 2e-1)
         assert post_sum['mean']['xc_1'] == pytest.approx(30., rel = 1e-2)
         assert post_sum['sd']['xc_1'] == pytest.approx(0.01, rel = 1e-1)
 

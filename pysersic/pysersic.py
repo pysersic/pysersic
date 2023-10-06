@@ -15,7 +15,7 @@ from numpyro.handlers import condition, trace
 from numpyro.infer import SVI, Trace_ELBO
 from numpyro.infer.svi import SVIRunResult
 from pysersic.exceptions import *
-from pysersic.priors import PySersicMultiPrior, PySersicSourcePrior
+from pysersic.priors import PySersicMultiPrior, PySersicSourcePrior, base_profile_params
 from pysersic.rendering import BaseRenderer, HybridRenderer
 from pysersic.results import PySersicResults
 
@@ -102,6 +102,7 @@ class BaseFitter(ABC):
                 sampler_kwargs: Optional[dict] ={},
                 mcmc_kwargs: Optional[dict] = {},
                 return_model: Optional[bool] = True,
+                reparam_func: Optional[Callable] = lambda x: x,
                 rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3)     
         ) -> pandas.DataFrame:
         """ Perform inference using a NUTS sampler
@@ -132,11 +133,12 @@ class BaseFitter(ABC):
         """
 
         model =  self.build_model(return_model = return_model)
-        self.sampler =infer.MCMC(infer.NUTS(model,init_strategy=init_strategy, **sampler_kwargs),num_chains=num_chains, num_samples=num_samples, num_warmup=num_warmup,  **mcmc_kwargs)
-        self.sampler.run(rkey)
+        model = reparam_func(model)
+        sampler =infer.MCMC(infer.NUTS(model,init_strategy=init_strategy, **sampler_kwargs),num_chains=num_chains, num_samples=num_samples, num_warmup=num_warmup,  **mcmc_kwargs)
+        sampler.run(rkey)
         self.sampling_results = PySersicResults(data=self.data,rms=self.rms,psf=self.psf,mask=self.mask,loss_func=self.loss_func,renderer=self.renderer)
         self.sampling_results.add_prior(self.prior)
-        self.sampling_results.injest_data(sampler = self.sampler)
+        self.sampling_results.injest_data(sampler = sampler)
         return self.sampling_results 
         
 
@@ -187,7 +189,7 @@ class BaseFitter(ABC):
         model_cur = self.build_model(return_model=return_model)
         guide = autoguide(model_cur)
 
-        svi_kernel = SVI(model_cur,guide, optim.Adam(0.1), loss = ELBO_loss, **SVI_kwargs)
+        svi_kernel = SVI(model_cur,guide, optim.Adam(0.01), loss = ELBO_loss, **SVI_kwargs)
         numpyro_svi_result = train_numpyro_svi_early_stop(svi_kernel,rkey=rkey,lr_init=lr_init,
                                                         num_round=num_round, **train_kwargs)
 
@@ -219,7 +221,7 @@ class BaseFitter(ABC):
         """
         model_cur = self.build_model(return_model=return_model)
         autoguide_map = infer.autoguide.AutoDelta(model_cur, init_loc_fn= infer.init_to_median)
-        train_kwargs = dict(lr_init = 0.01, num_round = 3,frac_lr_decrease  = 0.1, patience = 250, optimizer = optim.Adam, max_train = int(1e4))
+        train_kwargs = dict(lr_init = 0.1, num_round = 3,frac_lr_decrease  = 0.1, patience = 250, optimizer = optim.Adam, max_train = int(1e4))
         svi_kernel = SVI(model_cur,autoguide_map, optim.Adam(0.01),loss=Trace_ELBO())
         
         res = train_numpyro_svi_early_stop(svi_kernel,rkey=rkey, **train_kwargs)
@@ -231,12 +233,12 @@ class BaseFitter(ABC):
         trace_out = trace(condition(model_cur, use_dict)).get_trace()
         real_out = {}
         for key in trace_out:
-            if key == 'Loss':
+            if 'Loss' in key:
                 continue
             elif key == 'model':
                 real_out[key] = np.asarray(trace_out[key]['value'])
             elif not ('base' in key or 'auto' in key or 'unwrapped' in key or 'factor' in key or 'loss' in key):
-                real_out[key] = float('{:.5e}'.format(trace_out[key]['value']) )
+                real_out[key] = np.round(trace_out[key]['value'], 5 )
 
         return real_out
     
@@ -327,6 +329,7 @@ class FitSingle(BaseFitter):
 
         if prior.profile_type not in self.renderer.profile_types:
             raise AssertionError('Profile must be one of:', self.renderer.profile_types)
+        self.profile_type_number = 0
         self.prior = prior
         
 
@@ -347,14 +350,14 @@ class FitSingle(BaseFitter):
         @numpyro.handlers.reparam(config = self.prior.reparam_dict)
         def model(return_model: bool = return_model):
             params = self.prior()
-            out = self.renderer.render_source(params, self.prior.profile_type)
+            out = self.renderer.render_source(params, self.prior.profile_type, suffix = self.prior.suffix)
 
             sky = self.prior.sample_sky(self.renderer.X, self.renderer.Y)
 
             obs = out + sky
             if return_model:
-                deterministic('model', obs)
-            self.loss_func(obs, self.data, self.rms, self.mask)
+                deterministic(f'model{self.prior.suffix}', obs)
+            self.loss_func(obs, self.data, self.rms, self.mask, suffix = self.prior.suffix)
         return model
 
     
@@ -409,16 +412,14 @@ class FitMulti(BaseFitter):
         def model(return_model: bool = return_model):
             source_variables = self.prior()
 
-            out = self.renderer.render_multi(self.prior.catalog['type'],source_variables)
+            out = self.renderer.render_for_model(source_variables,self.prior.catalog['type'], suffix = self.prior.suffix)
             sky = self.prior.sample_sky(self.renderer.X, self.renderer.Y)
 
             obs = out + sky
-
-            if return_model:
-                obs = deterministic('model', obs)
             
-            loss = self.loss_func(obs, self.data, self.rms, self.mask)
-            return loss
+            if return_model:
+                deterministic(f'model{self.prior.suffix}', obs)
+            self.loss_func(obs, self.data, self.rms, self.mask, suffix = self.prior.suffix)
 
         return model
 
@@ -443,7 +444,7 @@ class FitMulti(BaseFitter):
         results_dict = {}
         for i in range(self.prior.N_sources):
             results_dict[f'source_{i}'] = {}
-            for pname in self.prior.all_priors[i].param_names:
+            for pname in base_profile_params[self.prior.catalog['type'][i]]:
                 results_dict[f'source_{i}'][pname] = raw_dict.pop(pname + f'_{i:d}')
         results_dict.update(raw_dict)
         return results_dict
