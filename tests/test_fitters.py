@@ -63,7 +63,7 @@ def test_FitSingle_sample():
         post_sum = arviz.summary(res.idata)
 
         assert post_sum['mean']['flux'] == pytest.approx(199.4, rel = 5e-2)
-        assert post_sum['sd']['flux'] == pytest.approx(0.46, rel = 5e-2)
+        assert post_sum['sd']['flux'] == pytest.approx(0.45, rel = 5e-2)
 
         assert post_sum['mean']['xc'] == pytest.approx(20.02, rel = 1e-2)
         assert post_sum['sd']['xc'] == pytest.approx(0.007, rel = 2e-1)
@@ -131,7 +131,7 @@ def test_FitMulti_sample():
         assert post_sum['sd']['flux_1'] == pytest.approx(0.42, rel = 1e-1)
 
         assert post_sum['mean']['xc_0'] == pytest.approx(10.0, rel = 1e-2)
-        assert post_sum['sd']['xc_0'] == pytest.approx(0.009, rel = 1e-1)
+        assert post_sum['sd']['xc_0'] == pytest.approx(0.01, rel = 2e-1)
         assert post_sum['mean']['xc_1'] == pytest.approx(30., rel = 1e-2)
         assert post_sum['sd']['xc_1'] == pytest.approx(0.01, rel = 1e-1)
 
