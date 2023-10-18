@@ -151,7 +151,7 @@ class PySersicResults():
         arviz.InferenceData
             the cleaned up object
         """
-        var_names = list(data.posterior.to_dataframe().columns)
+        var_names = list( data.posterior.data_vars )
         
         for var in var_names:
             if 'theta' in var:

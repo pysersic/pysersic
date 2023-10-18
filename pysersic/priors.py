@@ -181,6 +181,7 @@ class BasePrior(ABC):
         """
         self.reparam_dict = {}
         self.dist_dict = {}
+        self.repr_dict = {}
         self.sky_type = sky_type
         self.suffix = suffix
 
@@ -466,7 +467,6 @@ class PySersicSourcePrior(BasePrior):
         assert profile_type in base_profile_types
         self.profile_type = profile_type
         self.param_names = base_profile_params[self.profile_type]
-        self.repr_dict = {}
 
     def __repr__(self) -> str:
         out = f"Prior for a {self.profile_type} source:"
@@ -553,10 +553,9 @@ class PySersicMultiPrior(BasePrior):
             properties.set_sky_guess(sky_guess = 0., sky_guess_err = 0.)
         
         super().__init__(sky_type = sky_type,sky_guess=sky_guess,sky_guess_err=sky_guess_err)
-        
+
         self.catalog = catalog
         self.N_sources = len(catalog['x'])
-        self.repr_list = []
         self.suffix = suffix
 
         #Loop through catalog to generate priors
@@ -578,17 +577,22 @@ class PySersicMultiPrior(BasePrior):
             
             for k,v in dummy_prior.reparam_dict.items():
                 self.reparam_dict[k] = v
-            self.repr_list.append(dummy_prior.repr_dict)
+
+            for k,v in dummy_prior.repr_dict.items():
+                self.repr_dict[f'{k}_{ind}'] = v
             del dummy_prior
     
     def __repr__(self,)-> str:
         out = f"PySersicMultiPrior containing {self.N_sources:d} sources \n"
-        for i, (repr_dict, profile_type) in enumerate(zip(self.repr_list, self.catalog['type'] )):
-            out_cur = f"Prior for a {profile_type} source:"
+        for i, profile_type in enumerate( self.catalog['type'] ):
+            out_cur = f"Source #{i} of type - {profile_type}:"
             num_dash = len(out_cur)
             out_cur += "\n" + "-"*num_dash + "\n"
-            for (var, descrip) in repr_dict.items():
-                out_cur += var + " ---  " + descrip + "\n"  
+
+            for var in base_profile_params[profile_type]:
+                descrip = self.repr_dict[f'{var}_{i}']
+                out_cur += f"{var}_{i} ---  {descrip}\n"
+
             out += out_cur  
         out += self.sky_prior.__repr__()
         return out
