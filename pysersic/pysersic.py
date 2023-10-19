@@ -2,6 +2,7 @@ import copy
 from abc import ABC, abstractmethod
 from functools import partial
 from typing import Callable, Optional, Union
+import warnings
 
 import jax
 import jax.numpy as jnp
@@ -14,7 +15,7 @@ from numpyro import deterministic, infer, optim
 from numpyro.handlers import condition, trace
 from numpyro.infer import SVI, Trace_ELBO
 from numpyro.infer.svi import SVIRunResult
-from pysersic.exceptions import *
+from pysersic.exceptions import ShapeMatchError,KernelError
 from pysersic.priors import PySersicMultiPrior, PySersicSourcePrior, base_profile_params
 from pysersic.rendering import BaseRenderer, HybridRenderer
 from pysersic.results import PySersicResults
@@ -66,7 +67,7 @@ class BaseFitter(ABC):
         self.mask = parse_mask(mask,self.data)
         data_isgood = check_input_data(self.data,rms=self.rms,psf=self.psf,mask=jnp.logical_not(self.mask))
         self.renderer = renderer(data.shape, self.psf, **renderer_kwargs)
-    
+        self.prior = None
         self.prior_dict = {}
 
     
@@ -204,7 +205,8 @@ class BaseFitter(ABC):
     
     def find_MAP(self,
                 return_model: Optional[bool] = True,
-                rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3),):
+                rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3),
+                purge_extra: Optional[bool] = True):
         """Find the "best-fit" parameters as the maximum a-posteriori and return a dictionary with values for the parameters.
 
         Parameters
@@ -221,7 +223,7 @@ class BaseFitter(ABC):
         """
         model_cur = self.build_model(return_model=return_model)
         autoguide_map = infer.autoguide.AutoDelta(model_cur, init_loc_fn= infer.init_to_median)
-        train_kwargs = dict(lr_init = 0.1, num_round = 3,frac_lr_decrease  = 0.1, patience = 250, optimizer = optim.Adam, max_train = int(1e4))
+        train_kwargs = dict(lr_init = 0.05, num_round = 3,frac_lr_decrease  = 0.1, patience = 250, optimizer = optim.Adam, max_train = int(2e4))
         svi_kernel = SVI(model_cur,autoguide_map, optim.Adam(0.01),loss=Trace_ELBO())
         
         res = train_numpyro_svi_early_stop(svi_kernel,rkey=rkey, **train_kwargs)
@@ -232,13 +234,18 @@ class BaseFitter(ABC):
             use_dict[pref] = res.params[key]
         trace_out = trace(condition(model_cur, use_dict)).get_trace()
         real_out = {}
-        for key in trace_out:
-            if 'Loss' in key:
-                continue
-            elif key == 'model':
-                real_out[key] = np.asarray(trace_out[key]['value'])
-            elif not ('base' in key or 'auto' in key or 'unwrapped' in key or 'factor' in key or 'loss' in key):
-                real_out[key] = np.round(trace_out[key]['value'], 5 )
+
+        if purge_extra:
+            for key in trace_out:
+                if 'Loss' in key:
+                    continue
+                elif key == 'model':
+                    real_out[key] = np.asarray(trace_out[key]['value'])
+                elif not ('base' in key or 'auto' in key or 'unwrapped' in key or 'factor' in key or 'loss' in key):
+                    real_out[key] = np.round(trace_out[key]['value'], 5 )
+        else:
+            for k,v in trace_out.items():
+                real_out[k] = v['value']
 
         return real_out
     
@@ -272,9 +279,9 @@ class BaseFitter(ABC):
         """
         assert method in ['laplace','svi-flow','svi-mvn']
         if method=='laplace':
-            train_kwargs = dict(patience = 250, max_train = 10000)
+            train_kwargs = dict(patience = 250, max_train = 20000)
             guide_func = partial(infer.autoguide.AutoLaplaceApproximation, init_loc_fn = infer.init_to_median )
-            results = self._train_SVI(guide_func,method=method, train_kwargs=train_kwargs, return_model = return_model, rkey=rkey, num_sample=num_sample)
+            results = self._train_SVI(guide_func,method=method, lr_init = 0.05, train_kwargs=train_kwargs, return_model = return_model, rkey=rkey, num_sample=num_sample)
         elif method=='svi-flow':
             train_kwargs = dict(patience = 500, max_train = 20000)
             guide_func = partial(infer.autoguide.AutoBNAFNormal, num_flows =4,hidden_factors = [5,], init_loc_fn = infer.init_to_median)
@@ -425,7 +432,8 @@ class FitMulti(BaseFitter):
 
     def find_MAP(self,
                 return_model: Optional[bool] = True,
-                rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3),):
+                rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3),
+                purge_extra: Optional[bool] = True):
         """Find the "best-fit" parameters as the maximum a-posteriori and return a dictionary with values for the parameters.
 
         Parameters
@@ -440,13 +448,17 @@ class FitMulti(BaseFitter):
         dict
             dictionary with fit parameters and their values.
         """
-        raw_dict = super().find_MAP(return_model=return_model, rkey=rkey)
-        results_dict = {}
-        for i in range(self.prior.N_sources):
-            results_dict[f'source_{i}'] = {}
-            for pname in base_profile_params[self.prior.catalog['type'][i]]:
-                results_dict[f'source_{i}'][pname] = raw_dict.pop(pname + f'_{i:d}')
-        results_dict.update(raw_dict)
+        raw_dict = super().find_MAP(return_model=return_model, rkey=rkey, purge_extra= purge_extra)
+
+        if purge_extra:
+            results_dict = {}
+            for i in range(self.prior.N_sources):
+                results_dict[f'source_{i}'] = {}
+                for pname in base_profile_params[self.prior.catalog['type'][i]]:
+                    results_dict[f'source_{i}'][pname] = raw_dict.pop(pname + f'_{i:d}')
+            results_dict.update(raw_dict)
+        else:
+            results_dict = raw_dict
         return results_dict
 
 
@@ -568,16 +580,16 @@ def check_input_data(data:ArrayLike,rms:ArrayLike,psf:ArrayLike,mask:ArrayLike=N
     psf = jnp.array(psf)
     if data.shape != rms.shape:
         raise ShapeMatchError('RMS map ndims must match input data ndims.')
-    if jnp.mean(rms) > 5*jnp.std(data):
-        raise RMSWarning('Input RMS map appears to be highly offset (>5x) in magnitude from the rms of the pixels in the input image.')
+    if jnp.median(rms) > 5*jnp.std(data):
+        warnings.warn('Input RMS map appears to be highly offset (>5x) in magnitude from the rms of the pixels in the input image.')
     if not jnp.isclose(jnp.sum(psf),1.0,0.1):
-        raise PSFNormalizationWarning('PSF does not appear to be appropriately normalized; Sum(psf) is more than 0.1 away from 1.')
+        warnings.warn('PSF does not appear to be appropriately normalized; Sum(psf) is more than 0.1 away from 1.')
     if jnp.all(data.shape<psf.shape):
         raise KernelError('PSF pixel image size must be smaller than science image.')
     if mask is not None:
         mask = parse_mask(mask,data)
-        if jnp.sum(mask)/jnp.prod(jnp.array(mask.shape))<0.5:
-            raise MaskWarning('More than 50 percent of input image is masked. Is this correct? (Pysersic treats True/1 as masked; you may need to flip your boolean array.) ')
+        if jnp.sum(mask)/jnp.prod(jnp.array(mask.shape))>0.8:
+            warnings.warn('More than 80 percent of input image is masked. Is this correct? (Pysersic treats True/1 as masked; you may need to flip your boolean array.) ')
         if mask.shape !=data.shape:
             raise ShapeMatchError('Mask ndims must match input data ndims.')
     return True

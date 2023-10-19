@@ -15,7 +15,7 @@ import xarray
 from jax import random
 from mpl_toolkits.axes_grid1.axes_divider import make_axes_locatable
 
-from pysersic.priors import PySersicMultiPrior
+from pysersic.priors import PySersicMultiPrior, base_profile_params
 from pysersic.rendering import BaseRenderer
 
 ArrayLike = Union[np.array, jax.numpy.array]
@@ -419,7 +419,8 @@ def parse_multi_results(results: PySersicResults, source_num: int) -> PySersicRe
             new_res.__delattr__('idata_all')
     else:
         #Select variables for source
-        param_names = new_res.prior.all_priors[source_num].param_names
+        prof_type = new_res.prior.catalog['type'][source_num]
+        param_names = base_profile_params[prof_type]
         source_names = [pname + f'_{source_num}' for pname in param_names]
 
         #Search for other meta variables like sky etc.
