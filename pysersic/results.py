@@ -190,7 +190,7 @@ class PySersicResults():
         ArrayLike
             model image
         """
-        post_array = self.idata.posterior.to_dataframe().to_numpy()
+        post_array = np.moveaxis(self.idata.posterior.to_array().data.squeeze(), 0 , -1)
         med_vals =  np.median(post_array, axis = 0)
         dim_raw = np.argmin( np.sum( np.abs(post_array - med_vals), axis = 1 ) ) # rough way to find closest draw to the median
 

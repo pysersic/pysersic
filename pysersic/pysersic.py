@@ -284,12 +284,13 @@ class BaseFitter(ABC):
             results = self._train_SVI(guide_func,method=method, lr_init = 0.05, train_kwargs=train_kwargs, return_model = return_model, rkey=rkey, num_sample=num_sample)
         elif method=='svi-flow':
             train_kwargs = dict(patience = 500, max_train = 20000)
-            guide_func = partial(infer.autoguide.AutoBNAFNormal, num_flows =4,hidden_factors = [5,], init_loc_fn = infer.init_to_median)
-            results = self._train_SVI(guide_func,method='svi-flow',ELBO_loss= infer.Trace_ELBO(8),train_kwargs=train_kwargs,num_round=3,lr_init = 1e-2, rkey=rkey,return_model = return_model,num_sample=num_sample)
+            print ('new lr')
+            guide_func = partial(infer.autoguide.AutoBNAFNormal, num_flows =1,hidden_factors = [8,8], init_loc_fn = infer.init_to_median)
+            results = self._train_SVI(guide_func,method='svi-flow',ELBO_loss= infer.Trace_ELBO(8),train_kwargs=train_kwargs,num_round=3,lr_init = 5e-2, rkey=rkey,return_model = return_model,num_sample=num_sample)
         elif method=='svi-mvn':
             train_kwargs = dict(patience = 200, max_train = 5000)
             guide_func = partial(infer.autoguide.AutoLowRankMultivariateNormal, init_scale = 5e-3, init_loc_fn = infer.init_to_median)
-            results = self._train_SVI(guide_func,method='svi-mvn',ELBO_loss= infer.TraceMeanField_ELBO(16),train_kwargs=train_kwargs,num_round=3,lr_init = 1e-1, rkey=rkey,return_model = return_model,num_sample=num_sample)
+            results = self._train_SVI(guide_func,method='svi-mvn',ELBO_loss= infer.TraceMeanField_ELBO(5),train_kwargs=train_kwargs,num_round=3,lr_init = 5e-2, rkey=rkey,return_model = return_model,num_sample=num_sample)
         return results
 
     @abstractmethod

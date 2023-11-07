@@ -64,6 +64,24 @@ class BaseSkyPrior(ABC):
     def sample(self,X: jnp.array,Y: jnp.array):
         return NotImplementedError
 
+    def update_prior(self, name: str, mu: float, sigma: float):
+        """Update prior for a given parameter, assumed to be Gaussian with mu and sigma
+
+        Parameters
+        ----------
+        name : str
+            Name of parameter
+        mu : float
+            Location for prior
+        sigma : float
+            width of prior
+        """
+        self.reparam_dict[f'{name}{self.suffix}'] = infer.reparam.TransformReparam()
+        self.dist_dict[f'{name}{self.suffix}'] = dist.TransformedDistribution(
+                                dist.Normal(),
+                                dist.transforms.AffineTransform(mu,sigma,) )
+        self.repr_dict[name] = f"Normal with mu = {mu:.3e} and sd = {sigma:.3e}"
+
     def __repr__(self,):
         string = f"sky type - {self.type}\n"
         for k,v in self.repr_dict.items():
@@ -102,12 +120,7 @@ class FlatSkyPrior(BaseSkyPrior):
             suffix to be added on end of variables, by default ''
         """
         super().__init__(sky_guess, sky_guess_err, suffix)
-        self.reparam_dict['sky_back'+self.suffix] = infer.reparam.TransformReparam()
-        self.dist_dict['sky_back'+self.suffix] = dist.TransformedDistribution(
-                                dist.Normal(),
-                                dist.transforms.AffineTransform(self.sky_guess,self.sky_guess_err),)
-        self.type = 'Flat'
-        self.repr_dict["sky_back"] = f"Normal with mu = {self.sky_guess:.3e} and sd = {self.sky_guess_err:.3e}"
+        self.update_prior('sky_back', self.sky_guess, self.sky_guess_err)
 
     def sample(self, X,Y):
         return sample('sky_back'+self.suffix, self.dist_dict['sky_back'+self.suffix])
@@ -128,27 +141,9 @@ class TiltedPlaneSkyPrior(BaseSkyPrior):
         """
         super().__init__(sky_guess, sky_guess_err, suffix)
         
-        
-        self.dist_dict['sky_back'+self.suffix] = dist.TransformedDistribution(
-                                dist.Normal(),
-                                dist.transforms.AffineTransform(self.sky_guess,self.sky_guess_err),)
-        self.dist_dict['sky_x_sl'+self.suffix] = dist.TransformedDistribution(
-                                dist.Normal(),
-                                dist.transforms.AffineTransform(0.,0.1*self.sky_guess_err),)
-        self.dist_dict['sky_y_sl'+self.suffix] = dist.TransformedDistribution(
-                                dist.Normal(),
-                                dist.transforms.AffineTransform(0.,0.1*self.sky_guess_err),)
-    
-
-        self.reparam_dict['sky_back'+self.suffix] = infer.reparam.TransformReparam()
-        self.reparam_dict['sky_x_sl'+self.suffix] = infer.reparam.TransformReparam()
-        self.reparam_dict['sky_y_sl'+self.suffix] = infer.reparam.TransformReparam()
-        self.type = 'Tilted-plane'
-
-        self.repr_dict["sky_back"] = f"Normal with mu = {self.sky_guess:.3e} and sd = {self.sky_guess_err:.3e}"
-        self.repr_dict["sky_x_sl"] = f"Normal with mu = 0. and sd = {self.sky_guess_err*0.1:.3e}"
-        self.repr_dict["sky_y_sl"] = f"Normal with mu = 0. and sd = {self.sky_guess_err*0.1:.3e}"
-
+        self.update_prior('sky_back', self.sky_guess, self.sky_guess_err)
+        self.update_prior('sky_x_sl', 0., 0.1*self.sky_guess_err)
+        self.update_prior('sky_y_sl', 0., 0.1*self.sky_guess_err)
 
     def sample(self, X,Y):
 
@@ -206,6 +201,10 @@ class BasePrior(ABC):
             self.sky_prior = TiltedPlaneSkyPrior(sky_guess=self.sky_guess, sky_guess_err=self.sky_guess_err, suffix = self.suffix)
     
 
+    @property
+    def param_names(self):
+        return list(self.dist_dict.keys())
+    
     def update_suffix(self, new_suffix: str):
         """Change suffix for variable names
 
@@ -466,7 +465,6 @@ class PySersicSourcePrior(BasePrior):
         super().__init__(sky_type= sky_type,sky_guess=sky_guess,sky_guess_err=sky_guess_err, suffix = suffix)
         assert profile_type in base_profile_types
         self.profile_type = profile_type
-        self.param_names = base_profile_params[self.profile_type]
 
     def __repr__(self) -> str:
         out = f"Prior for a {self.profile_type} source:"
