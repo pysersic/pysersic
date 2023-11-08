@@ -238,7 +238,7 @@ class FitMultiBandPoly(BaseMultiBandFitter):
         self.poly_order = poly_order
 
     def restrict_func(self,x, hi,low):
-        return  jax.lax.logistic *(hi-low) + low
+        return  jax.lax.logistic(x) *(hi-low) + low
 
     def sample_param_at_bands(self, name):
         prior_sigma = 1.
