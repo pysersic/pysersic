@@ -16,6 +16,7 @@ class BaseMultiBandFitter(BaseFitter):
     def __init__(self, fitter_list: Union[List[FitSingle], List[FitMulti]],
                   wavelengths: jax.Array,
                   linked_params: List[str],
+                  const_params: Optional[List[str]] = [],
                   band_names: Optional[List[str]] = None,
                   linked_params_range: Optional[dict] = {}, 
                   wv_to_save: Optional[jax.Array] = None,
@@ -81,8 +82,12 @@ class BaseMultiBandFitter(BaseFitter):
         self.linked_params = linked_params
         for param in self.linked_params:
             assert param in self.param_names, f"Linked parameter ({param}) not in parameter list"
-        self.unlinked_params = [p for p in self.param_names if p not in self.linked_params]
         
+        self.const_params = const_params
+        for param in self.const_params:
+            assert param in self.param_names, f"const parameter ({param}) not in parameter list"
+
+        self.unlinked_params = [p for p in self.param_names if (p not in self.linked_params and p not in self.const_params)]
 
         #Update reparam dict, linked parameters are handled in each subclass
         self.reparam_dict = {}
@@ -106,7 +111,7 @@ class BaseMultiBandFitter(BaseFitter):
                 self.linked_params_mean[param] = params_prior_samples.mean()
                 self.linked_params_scale[param] = params_prior_samples.std()
 
-        
+
         #Set defaults for all parameters that have known limits
         self.linked_params_range = {}
         for param in self.linked_params:
@@ -119,6 +124,17 @@ class BaseMultiBandFitter(BaseFitter):
 
         self.linked_params_range.update(linked_params_range) #User-specific updates
 
+
+        #For constant parameters use the prior in the of the first band
+        self.const_prior_dict = {}
+        for const_param in self.const_params:
+            param_in_band_name = f'{const_param}_{self.band_names[0]}'
+            prior_dist = copy.copy(self.fitter_list[0].prior.dist_dict[param_in_band_name] )
+            self.const_prior_dict[const_param] = copy.deepcopy(prior_dist)
+            
+            if param_in_band_name in self.fitter_list[0].prior.reparam_dict:
+                self.reparam_dict[const_param] = self.fitter_list[0].prior.reparam_dict[param_in_band_name]
+        
 
         # Use estimated posterior of each individual band to set priors on unlinked parameters
         # Since these are "nuisance" in some sense that should help convergence etc. when sampling
@@ -196,6 +212,11 @@ class BaseMultiBandFitter(BaseFitter):
                 for i,band_name in enumerate(self.band_names):
                     params_dict[band_name][param_name] = deterministic(f'{param_name}_{band_name}', x[i])
 
+            for param, prior_dist in self.const_prior_dict.items():
+                value = sample(param, prior_dist)
+                for band in self.band_names:
+                    params_dict[band][param] = value
+
             all_obs = []
             for band_name,band_fitter in zip(self.band_names, self.fitter_list):
                 #Draw values for unlinked parameters based on individual priors (with suffix_names)
@@ -204,12 +225,12 @@ class BaseMultiBandFitter(BaseFitter):
                 
                 #Render each band like normal
                 if self.fitter_type == 'single':
-                    out = band_fitter.renderer.render_source(params_dict[band_name], 
-                                                             band_fitter.prior.profile_type, 
+                    out = band_fitter.renderer.render_source(params_dict[band_name],
+                                                             band_fitter.prior.profile_type,
                                                              suffix = "")
                 else:
                     out = band_fitter.renderer.render_for_model(params_dict[band_name],
-                                                                band_fitter.prior.catalog['type'], 
+                                                                band_fitter.prior.catalog['type'],
                                                                 suffix = "")
 
 
@@ -217,8 +238,7 @@ class BaseMultiBandFitter(BaseFitter):
                 obs = out + sky
                 all_obs.append(obs)
                 band_fitter.loss_func(obs, band_fitter.data, band_fitter.rms, band_fitter.mask, suffix = f'_{band_name}')
-            
-            if return_model: 
+            if return_model:
                 deterministic('model', jnp.array(all_obs))
         return model
     
@@ -228,13 +248,14 @@ class FitMultiBandPoly(BaseMultiBandFitter):
                  fitter_list: List[FitSingle],
                  wavelengths: jax.Array,
                  linked_params: List[str],
+                 const_params: Optional[List[str]] = [],
                  poly_order: Optional[int] = 3,
                  band_names: List[str] | None = None,
                  linked_params_range: dict | None = {},
                  wv_to_save: jax.Array | None = None,
                  rescale_unlinked_priors: Optional[bool] = False,) -> None:
 
-        super().__init__(fitter_list, wavelengths, linked_params, band_names, linked_params_range, wv_to_save, rescale_unlinked_priors=rescale_unlinked_priors)
+        super().__init__(fitter_list, wavelengths, linked_params,const_params, band_names, linked_params_range, wv_to_save, rescale_unlinked_priors=rescale_unlinked_priors)
         self.poly_order = poly_order
 
     def restrict_func(self,x, hi,low):
@@ -271,6 +292,7 @@ class FitMultiBandBSpline(BaseMultiBandFitter):
                  fitter_list: List[FitSingle],
                  wavelengths: jax.Array,
                  linked_params: List[str],
+                 const_params: Optional[List[str]] = [],
                  band_names: List[str] | None = None,
                  linked_params_range: dict | None = {},
                  wv_to_save: jax.Array | None = None,
@@ -280,7 +302,7 @@ class FitMultiBandBSpline(BaseMultiBandFitter):
                  pad_knots:bool = True,
                 ) -> None:
 
-        super().__init__(fitter_list, wavelengths, linked_params, band_names, linked_params_range, wv_to_save, rescale_unlinked_priors=rescale_unlinked_priors)
+        super().__init__(fitter_list, wavelengths, linked_params,const_params, band_names, linked_params_range, wv_to_save, rescale_unlinked_priors=rescale_unlinked_priors)
         self.N_knots = N_knots
         self.spline_k = spline_k
         min_lambda, max_lambda = jnp.min(self.wavelengths), jnp.max(self.wavelengths)
