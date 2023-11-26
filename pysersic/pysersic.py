@@ -573,7 +573,7 @@ def check_input_data(data:ArrayLike,rms:ArrayLike,psf:ArrayLike,mask:ArrayLike=N
     KernelError
         if the provided PSF is larger than the input image (exception)
     MaskWarning
-        If more than 50% of the image is masked. 
+        If more than 70% of the image is masked. 
     """
     rms = jnp.array(rms)
     data = jnp.array(data)
@@ -588,8 +588,8 @@ def check_input_data(data:ArrayLike,rms:ArrayLike,psf:ArrayLike,mask:ArrayLike=N
         raise KernelError('PSF pixel image size must be smaller than science image.')
     if mask is not None:
         mask = parse_mask(mask,data)
-        if jnp.sum(mask)/jnp.prod(jnp.array(mask.shape))>0.8:
-            warnings.warn('More than 80 percent of input image is masked. Is this correct? (Pysersic treats True/1 as masked; you may need to flip your boolean array.) ')
+        if jnp.sum(mask)/jnp.prod(jnp.array(mask.shape))<0.7:
+            warnings.warn('More than 70 percent of input image is masked. Is this correct? (Pysersic treats True/1 as masked; you may need to flip your boolean array.) ')
         if mask.shape !=data.shape:
             raise ShapeMatchError('Mask ndims must match input data ndims.')
     return True
