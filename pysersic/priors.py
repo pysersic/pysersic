@@ -834,9 +834,11 @@ class SourceProperties():
         if profile_type in ['exp','dev','sersic']:
             prior.set_truncated_gaussian_prior('r_eff', self.r_eff_guess,self.r_eff_guess_err, low = 0.5)
             prior.set_uniform_prior('ellip', 0, 0.9)
-            prior.set_custom_prior('theta', 
-                                   dist.VonMises(loc = self.theta_guess,concentration=2), 
-                                   reparam= infer.reparam.CircularReparam() )
+            #prior.set_custom_prior('theta', 
+            #                       dist.VonMises(loc = self.theta_guess,concentration=2), 
+            #                       reparam= infer.reparam.CircularReparam() )
+            prior.set_uniform_prior('theta', 0., 2.*np.pi)
+
             if profile_type == 'sersic':
                 prior.set_uniform_prior('n', 0.65, 8)
 
@@ -844,9 +846,10 @@ class SourceProperties():
 
             prior.set_uniform_prior('f_1', 0.,1.)
 
-            prior.set_custom_prior('theta', 
-                                   dist.VonMises(loc = self.theta_guess,concentration=2), 
-                                   reparam= infer.reparam.CircularReparam() )
+            #prior.set_custom_prior('theta', 
+            #                       dist.VonMises(loc = self.theta_guess,concentration=2), 
+            #                       reparam= infer.reparam.CircularReparam() )
+            prior.set_uniform_prior('theta', 0., 2.*np.pi)
 
             r_loc1 = self.r_eff_guess/1.5
             r_eff_guess_err1 = jnp.sqrt(self.r_eff_guess/1.5)

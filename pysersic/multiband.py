@@ -13,6 +13,9 @@ import arviz as az
 
 
 class BaseMultiBandFitter(BaseFitter):
+    """
+    Base class for multi-band fitter, for new classes only need to add a `sample_param_at_bands` function specifying the linking of parameters between bands.
+    """
     def __init__(self, fitter_list: Union[List[FitSingle], List[FitMulti]],
                   wavelengths: jax.Array,
                   linked_params: List[str],
@@ -20,7 +23,7 @@ class BaseMultiBandFitter(BaseFitter):
                   band_names: Optional[List[str]] = None,
                   linked_params_range: Optional[dict] = {}, 
                   wv_to_save: Optional[jax.Array] = None,
-                  rescale_unlinked_priors:Optional[bool] = False,) -> None:
+                  rescale_unlinked_priors: Optional[bool] = False,) -> None:
         """Base class to multi-band fitting, to be used in other classes where the "linking" function is defined
 
         Parameters
@@ -29,16 +32,18 @@ class BaseMultiBandFitter(BaseFitter):
             List of FitSingle objects for all the different bands
         wavelengths : jax.Array
             The wavelengths of each band, They will be normalized so don't need to rescale
-        band_names : Optional[List[str]], optional
-            Names of bands, if None will default to 'band_0', 'band_1' etc.
         linked_params : Optional[List[str]], optional
             Which parameters to link across bands, by default None
+        const_params : Optional[List[str]], optional
+            Which parameters to hold constant across bands, by default None
+        band_names : Optional[List[str]], optional
+            Names of bands, if None will default to 'band_0', 'band_1' etc.
         linked_params_range : Optional[dict], optional
             Ranges to enforce on any link parameters, by default {}
         wv_to_save : Optional[jax.Array], optional
             Additional wavelengths to track linking parameters for, by default None
         rescale_unlinked_priors: Optional[bool]:
-            Whether or not to rescale priors of unlinked parameters based on fits to individual bands
+            Whether or not to rescale priors of unlinked parameters based on Laplace posteriors from individual band fits
         """
         self.fitter_list = copy.deepcopy(fitter_list)
 
@@ -163,20 +168,21 @@ class BaseMultiBandFitter(BaseFitter):
                             base_dist = prior_dist.base_dist
                         else:
                             base_dist = prior_dist
-                        
                         #Check if there are bounds on prior
                         if isinstance(base_dist.support,dist.constraints._Real):
                             fitter.prior.set_gaussian_prior(param, summ_param['mean'], summ_param['sd']*2.)
                         else:
                             #If so then use a truncated distribution
                             low = base_dist.support.lower_bound
-                            high = base_dist.support.upper_bound
-                            
-                            #If there are transforms then apply them
                             if is_t:
                                 for t in prior_dist.transforms:
                                     low = t(low)
+                            try:
+                                high = base_dist.support.upper_bound
+                                for t in prior_dist.transforms:
                                     high = t(high)
+                            except AttributeError:  # Sometimes distributions are only lower bound e.g. r_eff at 0.5 pixels
+                                high = None
                                 
                             fitter.prior.set_truncated_gaussian_prior(param, summ_param['mean'], summ_param['sd']*2., low = low, high = high)
                 
@@ -185,6 +191,7 @@ class BaseMultiBandFitter(BaseFitter):
                     for param in sky_params:
                         param_no_suffix = param.replace(fitter.prior.suffix, '')
                         fitter.prior.sky_prior.update_prior(param_no_suffix, svi_summ[param]['mean'], svi_summ[param]['sd']*2.)
+        
         ##Dummy variables until we figure out what to do
         self.data = 0.
         self.rms = 0.
@@ -193,13 +200,36 @@ class BaseMultiBandFitter(BaseFitter):
         self.loss_func = 0.
         self.renderer = 0.
         self.prior = 0.
-        print ('return model')
     
     @abc.abstractmethod
-    def sample_param_at_bands(self, name):
+    def sample_param_at_bands(self, name: str) -> jax.Array:
+        """Function used to sample linked parameters at each band
+
+        Parameters
+        ----------
+        name : str
+            parameter name
+
+        Returns
+        -------
+        params_at_bands : jax.Array
+            parameter values sampled at bands
+        """
         return NotImplementedError
 
-    def build_model(self,return_model : bool = False):
+    def build_model(self,return_model : bool = False) -> callable:
+        """build numpyro model for multi-band inference
+
+        Parameters
+        ----------
+        return_model : bool, optional
+            wether or not to save and return observed images, by default False
+
+        Returns
+        -------
+        callable
+            numpyro model
+        """
         @handlers.reparam(config = self.reparam_dict)
         def model():
             #Draw heriarchichal parameters for each linked parameter
@@ -249,11 +279,35 @@ class FitMultiBandPoly(BaseMultiBandFitter):
                  wavelengths: jax.Array,
                  linked_params: List[str],
                  const_params: Optional[List[str]] = [],
-                 poly_order: Optional[int] = 3,
                  band_names: List[str] | None = None,
                  linked_params_range: dict | None = {},
                  wv_to_save: jax.Array | None = None,
-                 rescale_unlinked_priors: Optional[bool] = False,) -> None:
+                 rescale_unlinked_priors: Optional[bool] = False,
+                 poly_order: Optional[int] = 3,) -> None:
+        """
+        Multi-band fitting for where a polynomial is used as the linking function for specified parameters. For parameters with bounds, the output of the polynomial function is passed through a logisitic function to impose constraints in a continuous and differentiable way.
+
+        Parameters
+        ----------
+        fitter_list : List[FitSingle]
+            List of FitSingle objects for all the different bands
+        wavelengths : jax.Array
+            The wavelengths of each band, They will be normalized so don't need to rescale
+        linked_params : Optional[List[str]], optional
+            Which parameters to link across bands, by default None
+        const_params : Optional[List[str]], optional
+            Which parameters to hold constant across bands, by default None
+        band_names : Optional[List[str]], optional
+            Names of bands, if None will default to 'band_0', 'band_1' etc.
+        linked_params_range : Optional[dict], optional
+            Ranges to enforce on any link parameters, by default {}
+        wv_to_save : Optional[jax.Array], optional
+            Additional wavelengths to track linking parameters for, by default None
+        rescale_unlinked_priors: Optional[bool]:
+            Whether or not to rescale priors of unlinked parameters based on Laplace posteriors from individual band fits
+        poly_order: Optional[int]:
+            Order of polynomial (including 0th) for the linking function, default 3
+        """
 
         super().__init__(fitter_list, wavelengths, linked_params,const_params, band_names, linked_params_range, wv_to_save, rescale_unlinked_priors=rescale_unlinked_priors)
         self.poly_order = poly_order
@@ -297,11 +351,38 @@ class FitMultiBandBSpline(BaseMultiBandFitter):
                  linked_params_range: dict | None = {},
                  wv_to_save: jax.Array | None = None,
                  rescale_unlinked_priors: Optional[bool] = False,
-                 N_knots = 4,
-                 spline_k = 2,
-                 pad_knots:bool = True,
+                 N_knots: Optional[int] = 4,
+                 spline_k: Optional[int] = 2,
+                 pad_knots: Optional[bool] = True,
                 ) -> None:
+        """
+        Multi-band fitting for where a B-spline is used as the linking function for specified parameters. 
 
+        Parameters
+        ----------
+        fitter_list : List[FitSingle]
+            List of FitSingle objects for all the different bands
+        wavelengths : jax.Array
+            The wavelengths of each band, They will be normalized so don't need to rescale
+        linked_params : Optional[List[str]], optional
+            Which parameters to link across bands, by default None
+        const_params : Optional[List[str]], optional
+            Which parameters to hold constant across bands, by default None
+        band_names : Optional[List[str]], optional
+            Names of bands, if None will default to 'band_0', 'band_1' etc.
+        linked_params_range : Optional[dict], optional
+            Ranges to enforce on any link parameters, by default {}
+        wv_to_save : Optional[jax.Array], optional
+            Additional wavelengths to track linking parameters for, by default None
+        rescale_unlinked_priors : Optional[bool]
+            Whether or not to rescale priors of unlinked parameters based on Laplace posteriors from individual band fits
+        N_knots : Optional[int]
+            Number of spline knots, uniformly spaced, default is 4
+        spline_k : Optional[int]
+            B-spline order to use, default 2
+        pad_knots : Optional[bool]
+            Wether or not to pad location of first and last knots by +/- 10% of wv range from min and max of wavelengths 
+        """
         super().__init__(fitter_list, wavelengths, linked_params,const_params, band_names, linked_params_range, wv_to_save, rescale_unlinked_priors=rescale_unlinked_priors)
         self.N_knots = N_knots
         self.spline_k = spline_k
@@ -319,7 +400,6 @@ class FitMultiBandBSpline(BaseMultiBandFitter):
         self.dmat_bands = jnp.array( bspl_class.design_matrix(self.wavelengths, bspl_class.t,k = spline_k).toarray() )
         wv_to_save_dmat = jnp.clip(self.wv_to_save, a_min = min_lambda, a_max=max_lambda)
         self.dmat_save = jnp.array( bspl_class.design_matrix(wv_to_save_dmat, bspl_class.t,k = spline_k).toarray() )
-        print ('pad knot loc, ps 1.5')
     
     def sample_param_at_bands(self, name):
         prior_sigma = 1.5
