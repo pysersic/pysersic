@@ -22,7 +22,7 @@ copyright = '2023, Imad Pasha & Tim Miller'
 author = 'Imad Pasha & Tim Miller'
 
 # The full version, including alpha/beta/rc tags
-release = '0.1'
+release = '0.1.3'
 
 
 # Add any Sphinx extension module names here, as strings. They can be
@@ -50,7 +50,7 @@ nbsphinx_execute = 'never'
 html_theme_options = {'body_max_width': 'auto'}
 master_doc = 'index'
 
-autoapi_dirs = ['../../pysersic']
+autoapi_dirs = ['../pysersic']
 autoapi_ignore = ["*checkpoint*"]
 #autoapi_options = ['members','private-members','show-inheritance','show-module-summary','special-members','imported-members', ]
 html_theme = 'sphinx_rtd_theme'
