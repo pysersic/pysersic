@@ -283,7 +283,7 @@ class FitMultiBandPoly(BaseMultiBandFitter):
                  linked_params_range: dict | None = {},
                  wv_to_save: jax.Array | None = None,
                  rescale_unlinked_priors: Optional[bool] = False,
-                 poly_order: Optional[int] = 3,) -> None:
+                 poly_order: Optional[int] = 2,) -> None:
         """
         Multi-band fitting for where a polynomial is used as the linking function for specified parameters. For parameters with bounds, the output of the polynomial function is passed through a logisitic function to impose constraints in a continuous and differentiable way.
 
@@ -306,11 +306,11 @@ class FitMultiBandPoly(BaseMultiBandFitter):
         rescale_unlinked_priors: Optional[bool]:
             Whether or not to rescale priors of unlinked parameters based on Laplace posteriors from individual band fits
         poly_order: Optional[int]:
-            Order of polynomial (including 0th) for the linking function, default 3
+            Order of polynomial (i.e. linear = 1, quadratic = 2) for the linking function, default 2
         """
 
         super().__init__(fitter_list, wavelengths, linked_params,const_params, band_names, linked_params_range, wv_to_save, rescale_unlinked_priors=rescale_unlinked_priors)
-        self.poly_order = poly_order
+        self.poly_order = poly_order + 1 # account for constant term, change to the more intuitive definition
 
     def restrict_func(self,x, hi,low):
         return  jax.lax.logistic(x) *(hi-low) + low

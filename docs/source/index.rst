@@ -45,6 +45,7 @@ The empirically derived Sérsic profile is the most common parametric form for t
    example-fit
    multi-source-fitting
    manual-priors
+   multiband-example
 
 .. toctree::
    :maxdepth: 1
