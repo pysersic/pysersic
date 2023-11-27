@@ -192,14 +192,14 @@ class BaseMultiBandFitter(BaseFitter):
                         param_no_suffix = param.replace(fitter.prior.suffix, '')
                         fitter.prior.sky_prior.update_prior(param_no_suffix, svi_summ[param]['mean'], svi_summ[param]['sd']*2.)
         
-        ##Dummy variables until we figure out what to do
-        self.data = 0.
-        self.rms = 0.
-        self.psf = 0.
-        self.mask = 0.
-        self.loss_func = 0.
-        self.renderer = 0.
-        self.prior = 0.
+        ##Throw all the data into a dictionary so it gets past onto results class if needed
+        self.data = {b:fitter.data for (b,fitter) in zip(self.band_names,self.fitter_list)}
+        self.rms = {b:fitter.rms for (b,fitter) in zip(self.band_names,self.fitter_list)}
+        self.psf = {b:fitter.psf for (b,fitter) in zip(self.band_names,self.fitter_list)}
+        self.mask = {b:fitter.mask for (b,fitter) in zip(self.band_names,self.fitter_list)}
+        self.loss_func = {b:fitter.loss_func for (b,fitter) in zip(self.band_names,self.fitter_list)}
+        self.renderer = {b:fitter.renderer for (b,fitter) in zip(self.band_names,self.fitter_list)}
+        self.prior = {b:fitter.prior for (b,fitter) in zip(self.band_names,self.fitter_list)}
     
     @abc.abstractmethod
     def sample_param_at_bands(self, name: str) -> jax.Array:
