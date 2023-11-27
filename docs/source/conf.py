@@ -50,7 +50,7 @@ nbsphinx_execute = 'never'
 html_theme_options = {'body_max_width': 'auto'}
 master_doc = 'index'
 
-autoapi_dirs = ['../pysersic']
+autoapi_dirs = ['../../pysersic']
 autoapi_ignore = ["*checkpoint*"]
 #autoapi_options = ['members','private-members','show-inheritance','show-module-summary','special-members','imported-members', ]
 html_theme = 'sphinx_rtd_theme'
