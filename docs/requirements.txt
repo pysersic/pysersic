@@ -3,5 +3,4 @@ sphinx
 nbsphinx
 sphinx-rtd-theme
 sphinx-autoapi
-sphinxcontrib-napoleon
 nbsphinx_link
