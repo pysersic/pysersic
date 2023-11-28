@@ -15,8 +15,8 @@ import xarray
 from jax import random
 from mpl_toolkits.axes_grid1.axes_divider import make_axes_locatable
 
-from pysersic.priors import PySersicMultiPrior, base_profile_params
-from pysersic.rendering import BaseRenderer
+from .priors import PySersicMultiPrior, base_profile_params
+from .rendering import BaseRenderer
 
 ArrayLike = Union[np.array, jax.numpy.array]
 ListLike = Union[np.array,jax.numpy.array,list]

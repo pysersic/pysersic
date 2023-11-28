@@ -7,7 +7,7 @@ import numpy as np
 from jax import jit
 from scipy.special import comb
 from functools import partial
-from pysersic.exceptions import * 
+from .exceptions import * 
 
 base_profile_types = ['sersic','doublesersic','pointsource','exp','dev']
 base_profile_params =dict(

@@ -1,5 +1,5 @@
 
-from pysersic.pysersic import BaseFitter, FitMulti,FitSingle
+from .pysersic import BaseFitter, FitMulti,FitSingle
 import abc
 import numpy as np
 import jax.numpy as jnp

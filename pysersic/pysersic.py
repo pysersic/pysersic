@@ -15,10 +15,10 @@ from numpyro import deterministic, infer, optim
 from numpyro.handlers import condition, trace
 from numpyro.infer import SVI, Trace_ELBO
 from numpyro.infer.svi import SVIRunResult
-from pysersic.exceptions import ShapeMatchError,KernelError
-from pysersic.priors import PySersicMultiPrior, PySersicSourcePrior, base_profile_params
-from pysersic.rendering import BaseRenderer, HybridRenderer
-from pysersic.results import PySersicResults
+from .exceptions import ShapeMatchError,KernelError
+from .priors import PySersicMultiPrior, PySersicSourcePrior, base_profile_params
+from .rendering import BaseRenderer, HybridRenderer
+from .results import PySersicResults
 
 from .loss import gaussian_loss
 
