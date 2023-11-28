@@ -27,4 +27,4 @@ dependencies = ['numpy',
 version = "0.1.3"
 
 [tool.setuptools]
-package-dir = {"" = "pysersic"}
+packages = ['pysersic']
