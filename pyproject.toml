@@ -23,6 +23,7 @@ dependencies = ['numpy',
         'arviz',
         'tqdm',
         'asdf',
+        'sep',
         ]
 version = "0.1.3"
 
