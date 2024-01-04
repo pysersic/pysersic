@@ -38,10 +38,11 @@ def render_gaussian_fourier(FX: jax.numpy.array,
     jax.numpy.array
         Sum of components evaluated at FX and FY
     """
-    Ui = FX*jnp.cos(theta) + FY*jnp.sin(theta) 
-    Vi = -1*FX*jnp.sin(theta) + FY*jnp.cos(theta) 
+    theta_use = theta[:,jnp.newaxis,jnp.newaxis]
+    Ui = FX[jnp.newaxis,:,:]*jnp.cos(theta_use) + FY[jnp.newaxis,:,:]*jnp.sin(theta_use) 
+    Vi = -1*FX[jnp.newaxis,:,:]*jnp.sin(theta_use) + FY[jnp.newaxis,:,:]*jnp.cos(theta_use) 
 
-    in_exp = -1*(Ui*Ui + Vi*Vi*q*q)*(2*jnp.pi*jnp.pi*sigmas*sigmas)[:,jnp.newaxis,jnp.newaxis] - 1j*2*jnp.pi*FX*xc - 1j*2*jnp.pi*FY*yc
+    in_exp = -1*(Ui*Ui + Vi*Vi*q[:,jnp.newaxis,jnp.newaxis]*q[:,jnp.newaxis,jnp.newaxis])*(2*jnp.pi*jnp.pi*sigmas*sigmas)[:,jnp.newaxis,jnp.newaxis] - 1j*2*jnp.pi*FX*xc[:,jnp.newaxis,jnp.newaxis] - 1j*2*jnp.pi*FY*yc[:,jnp.newaxis,jnp.newaxis]
     Fgal_comp = amps[:,jnp.newaxis,jnp.newaxis]*jnp.exp(in_exp)
     Fgal = jnp.sum(Fgal_comp, axis = 0)
     return Fgal
@@ -169,6 +170,7 @@ def render_sersic_2d(X: jax.numpy.array,
     z = jnp.sqrt((x_maj / a) ** 2 + (x_min / b) ** 2)
     out = amplitude * jnp.exp(-bn * (z ** (1 / n) - 1)) / (1.-ellip)
     return out
+
 def calculate_etas_betas(precision: int)-> Tuple[jax.numpy.array, jax.numpy.array]:
     """Calculate the weights and nodes for the Gaussian decomposition described in Shajib (2019) (https://arxiv.org/abs/1906.08263)
 
