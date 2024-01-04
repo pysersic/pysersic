@@ -3,11 +3,12 @@ from typing import Iterable, Optional, Tuple, Union
 
 import jax
 import jax.numpy as jnp
+import equinox as eqx
 import numpy as np
-from jax import jit
 from scipy.special import comb
 from functools import partial
 from .exceptions import * 
+import warnings
 
 base_profile_types = ['sersic','doublesersic','pointsource','exp','dev']
 base_profile_params =dict(
@@ -20,7 +21,23 @@ base_profile_params =dict(
     )
 )
 
-class BaseRenderer(object):
+class BaseRenderer(eqx.Module):
+    im_shape : tuple = eqx.field(static=True)
+    psf_shape : tuple = eqx.field(static=True)
+    fft_shape : tuple = eqx.field(static=True)
+    profile_func_dict : dict = eqx.field(static=True)
+
+    pixel_PSF : jax.numpy.array
+    PSF_fft : jax.numpy.array
+    X : jax.numpy.array
+    Y : jax.nump.array
+    FX : jax.numpy.array
+    FY : jax.nump.array
+    x_mid : float
+    y_mid : float
+    fft_zeros : jnp.array
+    img_zeros : jnp.array
+
     def __init__(self, 
             im_shape: Iterable, 
             pixel_PSF: jax.numpy.array
@@ -37,13 +54,13 @@ class BaseRenderer(object):
         self.im_shape = im_shape
         self.pixel_PSF = pixel_PSF
         if not jnp.isclose(jnp.sum(self.pixel_PSF),1.0,0.1):
-            raise PSFNormalizationWarning('PSF does not appear to be appropriately normalized; Sum(psf) is more than 0.1 away from 1.')
+            warnings.warn('PSF does not appear to be appropriately normalized; Sum(psf) is more than 0.1 away from 1.')
         self.psf_shape = jnp.shape(self.pixel_PSF)
-        if jnp.all(self.im_shape<self.psf_shape):
+        if jnp.any(self.im_shape<self.psf_shape):
             raise KernelError('PSF pixel image size must be smaller than science image.')
-        self.x = jnp.arange(self.im_shape[0])
-        self.y = jnp.arange(self.im_shape[1])
-        self.X,self.Y = jnp.meshgrid(self.x,self.y)
+        x = jnp.arange(self.im_shape[0])
+        y = jnp.arange(self.im_shape[1])
+        self.X,self.Y = jnp.meshgrid(x,y)
         self.x_mid = self.im_shape[0]/2. - 0.5
         self.y_mid = self.im_shape[1]/2. - 0.5
 
@@ -57,31 +74,26 @@ class BaseRenderer(object):
         self.PSF_fft = jnp.fft.rfft2(self.pixel_PSF, s = self.im_shape)*fft_shift_arr_x*fft_shift_arr_y
 
         #All the  renderers here these profile types
-        self.profile_types = base_profile_types
-        self.profile_params = base_profile_params
         self.profile_func_dict = {}
-        for profile_type in self.profile_types:
+        for profile_type in base_profile_types:
             self.profile_func_dict[profile_type] = getattr(self, f'render_{profile_type}') 
 
         self.fft_zeros = jnp.zeros(self.fft_shape)
         self.img_zeros = jnp.zeros(self.im_shape)
 
-        def conv_img(image):
-            img_fft = jnp.fft.rfft2(image)
-            conv_fft = img_fft*self.PSF_fft
-            conv_im = jnp.fft.irfft2(conv_fft, s= self.im_shape)
-            return conv_im
-        #self.conv_img = jit(conv_img)
+    def conv_img(self, image):
+        img_fft = jnp.fft.rfft2(image)
+        conv_fft = img_fft*self.PSF_fft
+        conv_im = jnp.fft.irfft2(conv_fft, s= self.im_shape)
+        return conv_im
 
-        def conv_fft(F_im):
-            im = jnp.fft.irfft2(F_im*self.PSF_fft, s= self.im_shape) 
-            return im
-        #self.conv_fft = jit(conv_fft)
+    def conv_fft(self, F_im):
+        im = jnp.fft.irfft2(F_im*self.PSF_fft, s= self.im_shape) 
+        return im
 
-        def combine_scene(F_im, int_im, obs_im):
-            return conv_fft(F_im)+  conv_img(int_im) + obs_im
-        self.combine_scene = jit(combine_scene)
-    
+    def combine_scene(self, F_im, int_im, obs_im):
+        return self.conv_fft(F_im)+  self.conv_img(int_im) + obs_im
+
     @abstractmethod
     def render_sersic(self,params: dict):
         return NotImplementedError
@@ -194,6 +206,18 @@ class PixelRenderer(BaseRenderer):
     """
     Render class based on rendering in pixel space and then convolving with the PSF
     """
+    os_pixel_size : int = eqx.field(static=True)
+    num_os : int = eqx.field(static=True)
+
+    w_os : jnp.array
+    x_os_lo : int
+    x_os_hi : int
+    y_os_lo : int
+    y_os_hi : int
+
+    X_os = jnp.array
+    Y_os = jnp.array
+    
     def __init__(self, 
             im_shape: Iterable, 
             pixel_PSF: jax.numpy.array,
@@ -223,7 +247,7 @@ class PixelRenderer(BaseRenderer):
         
         #dx = np.linspace(-0.5,0.5, num= num_os,endpoint=True)
         #w = np.ones_like(dx)
-        self.dx_os,self.dy_os = jnp.meshgrid(dx,dx)
+        dx_os,dy_os = jnp.meshgrid(dx,dx)
 
         w1,w2 = jnp.meshgrid(w,w)
         self.w_os = w1*w2
@@ -234,20 +258,18 @@ class PixelRenderer(BaseRenderer):
         self.x_os_lo, self.x_os_hi = i_mid - self.os_pixel_size, i_mid + self.os_pixel_size
         self.y_os_lo, self.y_os_hi = j_mid - self.os_pixel_size, j_mid + self.os_pixel_size
 
-        self.X_os = self.X[self.x_os_lo:self.x_os_hi ,self.y_os_lo:self.y_os_hi ,jnp.newaxis,jnp.newaxis] + self.dx_os
-        self.Y_os = self.Y[self.x_os_lo:self.x_os_hi ,self.y_os_lo:self.y_os_hi ,jnp.newaxis,jnp.newaxis] + self.dy_os
+        self.X_os = self.X[self.x_os_lo:self.x_os_hi ,self.y_os_lo:self.y_os_hi ,jnp.newaxis,jnp.newaxis] + dx_os
+        self.Y_os = self.Y[self.x_os_lo:self.x_os_hi ,self.y_os_lo:self.y_os_hi ,jnp.newaxis,jnp.newaxis] + dy_os
 
 
-        #Set up and jit intrinsic Sersic rendering with Oversampling
-        def render_int_sersic(xc,yc, flux, r_eff, n,ellip, theta):
-            im_no_os = render_sersic_2d(self.X,self.Y,xc,yc, flux, r_eff, n,ellip, theta)
-            
-            sub_im_os = render_sersic_2d(self.X_os,self.Y_os,xc,yc, flux, r_eff, n,ellip, theta)
-            sub_im_os = jnp.sum(sub_im_os*self.w_os, axis = (2,3)) 
-            
-            im = im_no_os.at[self.x_os_lo:self.x_os_hi ,self.y_os_lo:self.y_os_hi].set(sub_im_os)
-            return im
-        self.render_int_sersic = jit(render_int_sersic)
+    def render_int_sersic(self,xc,yc, flux, r_eff, n,ellip, theta):
+        im_no_os = render_sersic_2d(self.X,self.Y,xc,yc, flux, r_eff, n,ellip, theta)
+        
+        sub_im_os = render_sersic_2d(self.X_os,self.Y_os,xc,yc, flux, r_eff, n,ellip, theta)
+        sub_im_os = jnp.sum(sub_im_os*self.w_os, axis = (2,3)) 
+        
+        im = im_no_os.at[self.x_os_lo:self.x_os_hi ,self.y_os_lo:self.y_os_hi].set(sub_im_os)
+        return im
 
     def render_sersic(self,params:dict)->jax.numpy.array:
         """Render a sersic profile
@@ -358,20 +380,18 @@ class FourierRenderer(BaseRenderer):
                 return amps,sigmas
             self.get_amps_sigmas = jax.jit(get_amps_sigmas)
         else:
-            if not jax.config.jax_enable_x64:
+            if not jax.config.x64_enabled:
                 print ("!! WARNING !! - FourierRenderer can be numerically unstable when using jax's default 32 bit. Please either enable jax 64 bit or set 'use_poly_amps' = True in the renderer kwargs")
             def get_amps_sigmas(flux,r_eff,n):
                 return sersic_gauss_decomp(flux, r_eff, n, self.etas, self.betas, self.frac_start*r_eff, self.frac_end*r_eff, self.n_sigma)
-            self.get_amps_sigmas = jax.jit(get_amps_sigmas)
+            self.get_amps_sigmas = get_amps_sigmas
             
 
-        #Jit compile function to render sersic profile in Fourier space
-        def render_sersic_mog_fourier(xc,yc, flux, r_eff, n,ellip, theta):
-            amps,sigmas = self.get_amps_sigmas(flux, r_eff, n)
-            q = 1.-ellip
-            Fgal = render_gaussian_fourier(self.FX,self.FY, amps,sigmas,xc,yc, theta,q)
-            return Fgal
-        self.render_sersic_mog_fourier = jit(render_sersic_mog_fourier)
+    def render_sersic_mog_fourier(self,xc,yc, flux, r_eff, n,ellip, theta):
+        amps,sigmas = self.get_amps_sigmas(flux, r_eff, n)
+        q = 1.-ellip
+        Fgal = render_gaussian_fourier(self.FX,self.FY, amps,sigmas,xc,yc, theta,q)
+        return Fgal
 
     def render_sersic(self,params: dict)->jax.numpy.array:
         """ Render a Sersic profile
@@ -490,27 +510,26 @@ class HybridRenderer(BaseRenderer):
                 return amps,sigmas
             self.get_amps_sigmas = jax.jit(get_amps_sigmas)
         else:
-            if not jax.config.jax_enable_x64:
+            if not jax.config.x64_enabled:
                 print ("!! WARNING !! - HybridRenderer can be numerically unstable when using jax's default 32 bit. Please either enable jax 64 bit or set 'use_poly_amps' = True in the renderer kwargs")
             def get_amps_sigmas(flux,r_eff,n):
                 return sersic_gauss_decomp(flux, r_eff, n, self.etas, self.betas, self.frac_start*r_eff, self.frac_end*r_eff, self.n_sigma)
             self.get_amps_sigmas = jax.jit(get_amps_sigmas)
             
 
-        def render_sersic_hybrid(xc,yc, flux, r_eff, n,ellip, theta):
-            amps,sigmas = self.get_amps_sigmas(flux, r_eff, n)
-            
-            q = 1.-ellip
+    def render_sersic_hybrid(self,xc,yc, flux, r_eff, n,ellip, theta):
+        amps,sigmas = self.get_amps_sigmas(flux, r_eff, n)
+        
+        q = 1.-ellip
 
-            sigmas_obs = jnp.sqrt(sigmas**2 + self.sig_psf_approx**2)
-            q_obs = jnp.sqrt( (q*q*sigmas**2 + self.sig_psf_approx**2)/ sigmas_obs**2 )
+        sigmas_obs = jnp.sqrt(sigmas**2 + self.sig_psf_approx**2)
+        q_obs = jnp.sqrt( (q*q*sigmas**2 + self.sig_psf_approx**2)/ sigmas_obs**2 )
 
-            Fgal = render_gaussian_fourier(self.FX,self.FY, amps[self.w_fourier],sigmas[self.w_fourier],xc,yc, theta,q)
+        Fgal = render_gaussian_fourier(self.FX,self.FY, amps[self.w_fourier],sigmas[self.w_fourier],xc,yc, theta,q)
 
-            im_gal = render_gaussian_pixel(self.X,self.Y, amps[self.w_real],sigmas_obs[self.w_real],xc,yc, theta,q_obs[self.w_real])
+        im_gal = render_gaussian_pixel(self.X,self.Y, amps[self.w_real],sigmas_obs[self.w_real],xc,yc, theta,q_obs[self.w_real])
 
-            return Fgal,im_gal
-        self.render_sersic_hyrbid = jax.jit(render_sersic_hybrid)
+        return Fgal,im_gal
 
     def render_sersic(self,params:dict)->jax.numpy.array:
         """ Render a Sersic profile
@@ -537,7 +556,7 @@ class HybridRenderer(BaseRenderer):
         jax.numpy.array
             Rendered Sersic model
         """
-        F, im  = self.render_sersic_hyrbid(params['xc'],params['yc'], params['flux'],params['r_eff'], params['n'],params['ellip'],params['theta'])
+        F, im  = self.render_sersic_hybrid(params['xc'],params['yc'], params['flux'],params['r_eff'], params['n'],params['ellip'],params['theta'])
         return F, self.img_zeros, im
 
 
@@ -562,7 +581,6 @@ class HybridRenderer(BaseRenderer):
         return F_im, self.img_zeros, self.img_zeros
 
 
-@jax.jit
 def sersic1D(
         r: Union[float, jax.numpy.array],
         flux: float,
@@ -591,7 +609,6 @@ def sersic1D(
     return Ie*jnp.exp ( -bn*( (r/re)**(1./n) - 1. ) )
 
 
-@jax.jit
 def render_gaussian_fourier(FX: jax.numpy.array,
         FY: jax.numpy.array,
         amps: jax.numpy.array,
@@ -634,7 +651,6 @@ def render_gaussian_fourier(FX: jax.numpy.array,
     Fgal = jnp.sum(Fgal_comp, axis = 0)
     return Fgal
 
-@jax.jit
 def render_pointsource_fourier(FX: jax.numpy.array,
         FY: jax.numpy.array,
         xc: float,
@@ -665,7 +681,6 @@ def render_pointsource_fourier(FX: jax.numpy.array,
     return F_im
 
 
-@jax.jit
 def render_gaussian_pixel(X: jax.numpy.array,
         Y: jax.numpy.array,
         amps: jax.numpy.array,
@@ -712,7 +727,6 @@ def render_gaussian_pixel(X: jax.numpy.array,
     return im
 
 
-@jax.jit
 def render_sersic_2d(X: jax.numpy.array,
     Y: jax.numpy.array,
     xc: float,

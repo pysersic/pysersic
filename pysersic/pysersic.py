@@ -17,7 +17,7 @@ from numpyro.infer import SVI, Trace_ELBO
 from numpyro.infer.svi import SVIRunResult
 from .exceptions import ShapeMatchError,KernelError
 from .priors import PySersicMultiPrior, PySersicSourcePrior, base_profile_params
-from .rendering import BaseRenderer, HybridRenderer
+from .rendering import BaseRenderer, HybridRenderer, base_profile_types
 from .results import PySersicResults
 
 from .loss import gaussian_loss
@@ -334,8 +334,8 @@ class FitSingle(BaseFitter):
 
         super().__init__(data,rms,psf,loss_func = loss_func, mask = mask, renderer = renderer, renderer_kwargs = renderer_kwargs)
 
-        if prior.profile_type not in self.renderer.profile_types:
-            raise AssertionError('Profile must be one of:', self.renderer.profile_types)
+        if prior.profile_type not in base_profile_types:
+            raise AssertionError('Profile must be one of:', base_profile_types)
         self.profile_type_number = 0
         self.prior = prior
         
