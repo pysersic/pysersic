@@ -23,8 +23,10 @@ dependencies = ['numpy',
         'arviz',
         'tqdm',
         'asdf',
+        'equinox',
+        'interpax',
         ]
-version = "0.1.3"
+version = "0.1.4"
 
 [tool.setuptools]
 packages = ['pysersic']
