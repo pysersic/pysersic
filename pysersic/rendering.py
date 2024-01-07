@@ -11,11 +11,12 @@ from functools import partial
 from .exceptions import * 
 import warnings
 
-base_profile_types = ['sersic','doublesersic','pointsource','exp','dev']
+base_profile_types = ['sersic','doublesersic','sersic_pointsource','pointsource','exp','dev']
 base_profile_params =dict(
     zip(base_profile_types,
     [ ['xc','yc','flux','r_eff','n','ellip','theta'],
     ['xc','yc','flux','f_1', 'r_eff_1','n_1','ellip_1', 'r_eff_2','n_2','ellip_2','theta'],
+    ['xc','yc','flux','f_ps','r_eff','n','ellip','theta'],
     ['xc','yc','flux'],
     ['xc','yc','flux','r_eff','ellip','theta'],
     ['xc','yc','flux','r_eff','ellip','theta'],]
@@ -108,7 +109,19 @@ class BaseRenderer(eqx.Module):
         F2, im_int_2, im_obs_2 =  self.render_sersic(dict_2)
 
         return F1+F2, im_int_1+im_int_2, im_obs_1+im_obs_2
+    def render_sersic_pointsource(self, params : dict):
+        pointsource_dict = {}
+        sersic_dict = params.copy()
 
+        sersic_dict['flux'] = (1. - params['f_ps'])*params['flux']
+        pointsource_dict['flux'] = sersic_dict.pop('f_ps')*params['flux']
+        pointsource_dict['xc'] = sersic_dict['xc']
+        pointsource_dict['yc'] = sersic_dict['yc']
+
+        F1, im_int_1, im_obs_1 =  self.render_sersic(sersic_dict)
+        F2, im_int_2, im_obs_2 =  self.render_pointsource(pointsource_dict)
+        return F1+F2, im_int_1+im_int_2, im_obs_1+im_obs_2
+    
     @abstractmethod
     def render_pointsource(self,params: dict):
         return NotImplementedError

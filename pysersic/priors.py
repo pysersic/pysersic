@@ -13,6 +13,7 @@ import pandas
 from numpyro import distributions as dist, infer, sample
 from photutils.morphology import data_properties
 from copy import copy
+import equinox as eqx
 
 base_sky_types = ['none','flat','tilted-plane']
 base_sky_params = dict(
@@ -21,25 +22,32 @@ base_sky_params = dict(
     )
 )
 
-@jax.jit
 def render_tilted_plane_sky(X,Y,back,x_sl,y_sl ):
     xmid = float(X.shape[0]/2.)
     ymid = float(Y.shape[0]/2.)
     return back + (X-xmid)*x_sl + (Y-ymid)*y_sl
 
 
-base_profile_types = ['sersic','doublesersic','pointsource','exp','dev']
-base_profile_params =dict( 
+base_profile_types = ['sersic','doublesersic','sersic_pointsource','pointsource','exp','dev']
+base_profile_params =dict(
     zip(base_profile_types,
     [ ['xc','yc','flux','r_eff','n','ellip','theta'],
     ['xc','yc','flux','f_1', 'r_eff_1','n_1','ellip_1', 'r_eff_2','n_2','ellip_2','theta'],
+    ['xc','yc','flux','f_ps','r_eff','n','ellip','theta'],
     ['xc','yc','flux'],
     ['xc','yc','flux','r_eff','ellip','theta'],
     ['xc','yc','flux','r_eff','ellip','theta'],]
-    )
+    ) 
 )
 
-class BaseSkyPrior(ABC):
+class BaseSkyPrior(eqx.Module):
+    type : eqx.AbstractClassVar()
+    repr_dict : dict = eqx.field(static=True)
+    suffix : str
+    dist_dict : dict
+    reparam_dict : dict
+
+
     def __init__(self,sky_guess: float, sky_guess_err: float, suffix: str = ''):
         """Base class for sky priors
 
@@ -52,12 +60,10 @@ class BaseSkyPrior(ABC):
         suffix : str, optional
             suffix to be added on end of variables, by default ''
         """
-        self.sky_guess = sky_guess
-        self.sky_guess_err = sky_guess_err
+
         self.reparam_dict = {}
         self.dist_dict = {}
         self.suffix = suffix
-        self.type = 'Base'
         self.repr_dict = {}
     
     @abstractmethod
@@ -89,6 +95,7 @@ class BaseSkyPrior(ABC):
         return string
     
 class NoSkyPrior(BaseSkyPrior):
+    type : str = 'None'
     def __init__(self, sky_guess: float, sky_guess_err: float, suffix: str = ''):
         """Class for no sky model
 
@@ -107,6 +114,8 @@ class NoSkyPrior(BaseSkyPrior):
         return 0.
     
 class FlatSkyPrior(BaseSkyPrior):
+    type : str = 'flat'
+
     def __init__(self, sky_guess: float, sky_guess_err: float, suffix: str = ''):
         """Class for sky model of constant background
 
@@ -120,13 +129,13 @@ class FlatSkyPrior(BaseSkyPrior):
             suffix to be added on end of variables, by default ''
         """
         super().__init__(sky_guess, sky_guess_err, suffix)
-        self.update_prior('sky_back', self.sky_guess, self.sky_guess_err)
+        self.update_prior('sky_back', sky_guess, sky_guess_err)
 
     def sample(self, X,Y):
         return sample('sky_back'+self.suffix, self.dist_dict['sky_back'+self.suffix])
 
 class TiltedPlaneSkyPrior(BaseSkyPrior):
-
+    type : str = 'TiltedPlane'
     def __init__(self, sky_guess: float, sky_guess_err: float, suffix: str = ''):
         """Class for tilted-plane sky model
 
@@ -141,9 +150,9 @@ class TiltedPlaneSkyPrior(BaseSkyPrior):
         """
         super().__init__(sky_guess, sky_guess_err, suffix)
         
-        self.update_prior('sky_back', self.sky_guess, self.sky_guess_err)
-        self.update_prior('sky_x_sl', 0., 0.1*self.sky_guess_err)
-        self.update_prior('sky_y_sl', 0., 0.1*self.sky_guess_err)
+        self.update_prior('sky_back', sky_guess, sky_guess_err)
+        self.update_prior('sky_x_sl', 0., 0.1*sky_guess_err)
+        self.update_prior('sky_y_sl', 0., 0.1*sky_guess_err)
 
     def sample(self, X,Y):
 
@@ -156,7 +165,14 @@ class TiltedPlaneSkyPrior(BaseSkyPrior):
 
         return back + (X-x_mid)*x_sl + (Y-y_mid)*y_sl
 
-class BasePrior(ABC):
+class BasePrior(eqx.Module):
+    sky_type :  str =  eqx.field(static=True)
+    repr_dict : dict = eqx.field(static=True)
+    suffix : str
+    dist_dict : dict
+    reparam_dict : dict
+    sky_prior : eqx.Module
+
     """
     Base class for priors with sky sampling included
     """
@@ -181,12 +197,10 @@ class BasePrior(ABC):
         self.suffix = suffix
 
         if sky_guess is None:
-            self.sky_guess = 0.0
-            self.sky_guess_err = 0.
+            sky_guess = 0.0
+            sky_guess_err = 0.
         else:
             assert sky_guess is not None and sky_guess_err is not None, 'If using fitting a sky then must supply a guess and uncertainty on the background value'
-            self.sky_guess = sky_guess
-            self.sky_guess_err = sky_guess_err
 
         if self.sky_type not in base_sky_types:
             raise AssertionError("Sky type must be one of: ", base_sky_types)
@@ -195,53 +209,15 @@ class BasePrior(ABC):
             self.sky_prior = NoSkyPrior(0.,0.)
     
         elif self.sky_type == 'flat':
-            self.sky_prior = FlatSkyPrior(sky_guess=self.sky_guess, sky_guess_err=self.sky_guess_err, suffix = self.suffix)
+            self.sky_prior = FlatSkyPrior(sky_guess=sky_guess, sky_guess_err=sky_guess_err, suffix = suffix)
 
         elif self.sky_type == 'tilted-plane':
-            self.sky_prior = TiltedPlaneSkyPrior(sky_guess=self.sky_guess, sky_guess_err=self.sky_guess_err, suffix = self.suffix)
+            self.sky_prior = TiltedPlaneSkyPrior(sky_guess=sky_guess, sky_guess_err=sky_guess_err, suffix = suffix)
     
 
     @property
     def param_names(self):
         return list(self.dist_dict.keys())
-    
-    def update_suffix(self, new_suffix: str):
-        """Change suffix for variable names
-
-        Parameters
-        ----------
-        new_suffix : str
-        """
-        old_suffix = copy(self.suffix)
-
-        if len(old_suffix) == 0: # If no suffix then add
-            name_change = lambda s: s+new_suffix
-        else: # Otherwise replace
-            name_change = lambda s: s.replace(old_suffix, new_suffix)
-
-        new_dist_dict = {}
-        for k,v in self.dist_dict.items():
-            new_dist_dict[name_change(k)] = self.dist_dict[k]
-
-        new_reparam_dict = {} 
-        for k,v in self.dist_dict.items():
-            new_reparam_dict[name_change(k)] = self.reparam_dict[k]
-
-        self.reparam_dict = new_reparam_dict
-        self.dist_dict = new_dist_dict
-        self.suffix = new_suffix
-
-        new_dist_dict = {}
-        for k,v in self.sky_prior.dist_dict.items():
-            new_dist_dict[name_change(k)] = self.sky_prior.dist_dict[k]
-
-        new_reparam_dict = {} 
-        for k,v in self.sky_prior.dist_dict.items():
-            new_reparam_dict[name_change(k)] = self.sky_prior.reparam_dict[k]
-
-        self.sky_prior.reparam_dict = new_reparam_dict
-        self.sky_prior.dist_dict = new_dist_dict
-        self.sky_prior.suffix = new_suffix
     
     def sample_sky(self,X: jax.numpy.array,Y: jax.numpy.array)-> float:
         """Sample sky parameters and return sky model
@@ -441,6 +417,8 @@ class PySersicSourcePrior(BasePrior):
     """
     Class used for priors for single source fitting in PySersic
     """
+    profile_type : str = eqx.field(static=True)
+
     def __init__(self, 
                 profile_type: str, 
                 sky_type: Optional[str] = 'none',
@@ -515,6 +493,9 @@ class PySersicMultiPrior(BasePrior):
     """
     Class used for priors for multi source fitting in PySersic
     """
+    catalog : dict = eqx.field(static= True)
+    N_sources : int
+
     def __init__(self, 
             catalog: Union[pandas.DataFrame,dict, np.recarray],
             sky_type: Optional[str] = 'none', 
@@ -563,7 +544,7 @@ class PySersicMultiPrior(BasePrior):
             properties.set_position_guess((catalog['x'][ind],catalog['y'][ind]) )
             try:
                 properties.set_theta_guess(catalog['theta'][ind])
-            except:
+            except KeyError:
                 properties.set_theta_guess(0)
             
             dummy_prior = properties.generate_prior(catalog['type'][ind], 
@@ -594,6 +575,56 @@ class PySersicMultiPrior(BasePrior):
             out += out_cur  
         out += self.sky_prior.__repr__()
         return out
+
+def update_prior_suffix(prior: BasePrior, new_suffix: str) -> BasePrior:
+    """Change the suffix of a pysersic prior
+
+    Parameters
+    ----------
+    prior : BasePrior
+        Either a Source or Multi Prior, 
+    new_suffix : str
+        new suffix for variables
+
+    Returns
+    -------
+    BasePrior
+        Prior with updated suffix
+    """
+    old_suffix = copy(prior.suffix)
+
+    def name_change(s : str) -> str:
+        new_s = copy(s)
+        if len(old_suffix) == 0:
+            new_s += new_suffix
+        else:
+            new_s = new_s.replace(old_suffix,new_suffix)
+        return new_s
+
+    new_dist_dict = {}
+    for k,v in prior.dist_dict.items():
+        new_dist_dict[name_change(k)] = prior.dist_dict[k]
+
+    new_reparam_dict = {} 
+    for k,v in prior.dist_dict.items():
+        new_reparam_dict[name_change(k)] = prior.reparam_dict[k]
+
+    new_prior = eqx.tree_at( lambda t:  t.reparam_dict,prior,new_reparam_dict)
+    new_prior = eqx.tree_at( lambda t:  t.dist_dict,new_prior,new_dist_dict)
+    new_prior = eqx.tree_at( lambda t:  t.suffix,new_prior,new_suffix)
+
+    new_dist_dict = {}
+    for k,v in prior.sky_prior.dist_dict.items():
+        new_dist_dict[name_change(k)] = prior.sky_prior.dist_dict[k]
+
+    new_reparam_dict = {} 
+    for k,v in prior.sky_prior.dist_dict.items():
+        new_reparam_dict[name_change(k)] = prior.sky_prior.reparam_dict[k]
+
+    new_prior = eqx.tree_at( lambda t:  t.sky_prior.reparam_dict,new_prior,new_reparam_dict)
+    new_prior = eqx.tree_at( lambda t:  t.sky_prior.dist_dict,new_prior,new_dist_dict)
+    new_prior = eqx.tree_at( lambda t:  t.sky_prior.suffix,new_prior,new_suffix)
+    return new_prior
 
 
 
@@ -831,7 +862,7 @@ class SourceProperties():
         prior.set_gaussian_prior('xc', self.xc_guess, 1.)
         prior.set_gaussian_prior('yc', self.yc_guess, 1.)
 
-        if profile_type in ['exp','dev','sersic']:
+        if profile_type in ['exp','dev','sersic', 'sersic_pointsource']:
             prior.set_truncated_gaussian_prior('r_eff', self.r_eff_guess,self.r_eff_guess_err, low = 0.5)
             prior.set_uniform_prior('ellip', 0, 0.9)
             #prior.set_custom_prior('theta', 
@@ -839,8 +870,11 @@ class SourceProperties():
             #                       reparam= infer.reparam.CircularReparam() )
             prior.set_uniform_prior('theta', 0., 2.*np.pi)
 
-            if profile_type == 'sersic':
+            if 'sersic' in profile_type :
                 prior.set_uniform_prior('n', 0.65, 8)
+                if profile_type == 'sersic_pointsource':
+                    prior.set_uniform_prior('f_ps', 0.,1.)
+        
 
         elif profile_type == 'doublesersic':
 
