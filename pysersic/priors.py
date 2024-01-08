@@ -214,7 +214,6 @@ class BasePrior(eqx.Module):
         elif self.sky_type == 'tilted-plane':
             self.sky_prior = TiltedPlaneSkyPrior(sky_guess=sky_guess, sky_guess_err=sky_guess_err, suffix = suffix)
     
-
     @property
     def param_names(self):
         return list(self.dist_dict.keys())
@@ -469,14 +468,14 @@ class PySersicSourcePrior(BasePrior):
             True if all variable for given type are present with no extra, False otherwise
         """
         missing = []
-
-        for var in self.param_names:
+        param_names = base_profile_params[self.profile_type]
+        for var in param_names:
             if not var in self.dist_dict.keys():
                 missing.append(var)
         
         extra = []
-        for (name, descrip) in self.repr_dict.items():
-            if (name not in self.param_names) and ('sky' not in name):
+        for (name, descrip) in self.dist_dict.items():
+            if (name not in param_names) and ('sky' not in name):
                 extra.append(name)
         if verbose:
             print ("Missing params for profile: ", missing)
