@@ -15,8 +15,8 @@ import xarray
 from jax import random
 from mpl_toolkits.axes_grid1.axes_divider import make_axes_locatable
 
-from pysersic.priors import PySersicMultiPrior, base_profile_params
-from pysersic.rendering import BaseRenderer
+from .priors import PySersicMultiPrior, base_profile_params
+from .rendering import BaseRenderer
 
 ArrayLike = Union[np.array, jax.numpy.array]
 ListLike = Union[np.array,jax.numpy.array,list]
@@ -182,24 +182,10 @@ class PySersicResults():
         return az.summary(self.idata)
     
 
-    def get_median_model(self,)->Tuple[pd.DataFrame ,ArrayLike]:
-        """Selects the best fit model from the posterior draw that is closest to the median. returns the paramaters of the given draw and the model image. For the model images corresponding to every draw use the `.models` attribute of the results class.
-
-        Returns
-        -------
-        ArrayLike
-            model image
-        """
-        post_array = self.idata.posterior.to_dataframe().to_numpy()
-        med_vals =  np.median(post_array, axis = 0)
-        dim_raw = np.argmin( np.sum( np.abs(post_array - med_vals), axis = 1 ) ) # rough way to find closest draw to the median
-
-        draws = self.idata.posterior.dims['draw']
-        chain, draw = dim_raw //draws , dim_raw%draws
-        params = self.idata.posterior.sel(chain = chain, draw = draw).to_pandas()
-        model_im = self.models.sel(chain = chain, draw = draw).values
-        return params, model_im
-    
+    def get_median_model(self,):
+        print('This function has been deprecated as it was buggy and not implemented well. If you require a model we suggest using Fit[x].find_map() of looking at the models from the posterior in PySersicResults.models')
+        print('Please reach out if you have any questions.')
+        return NotImplementedError
 
     def corner(self,quantiles=[.16,.50,.84,],**kwargs):
         """Return a corner plot of the parameter estimation
@@ -236,7 +222,7 @@ class PySersicResults():
         Union[pd.DataFrame,dict]
             dict or dataframe with index/keys as parameters and columns/values as the chosen quantiles.
         """
-        xx = self.idata.posterior.quantile(quantiles).to_dict()
+        xx = self.idata.posterior.quantile(quantiles, dim = ['chain','draw']).to_dict()
         out = {} 
         for i in xx['data_vars'].keys():
             out[i] = xx['data_vars'][i]['data']
@@ -252,6 +238,8 @@ class PySersicResults():
         q_dict = self.retrieve_param_quantiles()
         for key in q_dict.keys():
             qs = q_dict[key]
+            if isinstance(qs[0], list):
+                qs = np.array(qs)
             med = qs[1]
             std = 0.5*np.abs(qs[2] - qs[0])
             out[key] = np.array([med,std])
@@ -354,8 +342,6 @@ class PySersicResults():
         if self.runtype == 'svi':
             tree['svi_method_used'] = self.svi_method_used
         tree['prior_info'] = self.prior.__str__()
-        tree['best_model'] = np.array(self.get_median_model()[1])
-        tree['best_model_params'] = self.get_median_model()[0].to_dict()
         tree['posterior'] = self.idata.to_dict()['posterior']
         for i in tree['posterior']:
             i = np.array(i)

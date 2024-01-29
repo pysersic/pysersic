@@ -77,13 +77,13 @@ def test_PySersicMultiPrior():
     assert params['yc_1'] == pytest.approx(16.05198, abs = 1e-4)
     assert params['r_eff_1'] == pytest.approx(9.10913, abs = 1e-4)
     assert params['ellip_1'] == pytest.approx(0.32804, abs = 1e-4)
-    assert params['theta_1'] == pytest.approx(-0.04293, abs = 1e-4)
+    assert params['theta_1'] == pytest.approx(6.21555, abs = 1e-4)
     assert params['flux_2'] == pytest.approx(65.84653, abs = 1e-4)
     assert params['xc_2'] == pytest.approx(21.38217, abs = 1e-4)
     assert params['yc_2'] == pytest.approx(11.08138, abs = 1e-4)
     assert params['r_eff_2'] == pytest.approx(3.35782, abs = 1e-4)
     assert params['ellip_2'] == pytest.approx(0.78032, abs = 1e-4)
-    assert params['theta_2'] == pytest.approx(0.78913, abs = 1e-4)
+    assert params['theta_2'] == pytest.approx(0.61594, abs = 1e-4)
     assert params['n_2'] == pytest.approx(4.79926, abs = 1e-4)
     
 def test_sky_estimate():

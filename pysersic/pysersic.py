@@ -15,10 +15,10 @@ from numpyro import deterministic, infer, optim
 from numpyro.handlers import condition, trace
 from numpyro.infer import SVI, Trace_ELBO
 from numpyro.infer.svi import SVIRunResult
-from pysersic.exceptions import ShapeMatchError,KernelError
-from pysersic.priors import PySersicMultiPrior, PySersicSourcePrior, base_profile_params
-from pysersic.rendering import BaseRenderer, HybridRenderer
-from pysersic.results import PySersicResults
+from .exceptions import ShapeMatchError,KernelError
+from .priors import PySersicMultiPrior, PySersicSourcePrior, base_profile_params
+from .rendering import BaseRenderer, HybridRenderer
+from .results import PySersicResults
 
 from .loss import gaussian_loss
 
@@ -284,12 +284,12 @@ class BaseFitter(ABC):
             results = self._train_SVI(guide_func,method=method, lr_init = 0.05, train_kwargs=train_kwargs, return_model = return_model, rkey=rkey, num_sample=num_sample)
         elif method=='svi-flow':
             train_kwargs = dict(patience = 500, max_train = 20000)
-            guide_func = partial(infer.autoguide.AutoBNAFNormal, num_flows =4,hidden_factors = [5,], init_loc_fn = infer.init_to_median)
-            results = self._train_SVI(guide_func,method='svi-flow',ELBO_loss= infer.Trace_ELBO(8),train_kwargs=train_kwargs,num_round=3,lr_init = 1e-2, rkey=rkey,return_model = return_model,num_sample=num_sample)
+            guide_func = partial(infer.autoguide.AutoBNAFNormal, num_flows =3,hidden_factors = [5,5], init_loc_fn = infer.init_to_median)
+            results = self._train_SVI(guide_func,method='svi-flow',ELBO_loss= infer.Trace_ELBO(8),train_kwargs=train_kwargs,num_round=3,lr_init = 5e-2, rkey=rkey,return_model = return_model,num_sample=num_sample)
         elif method=='svi-mvn':
             train_kwargs = dict(patience = 200, max_train = 5000)
             guide_func = partial(infer.autoguide.AutoLowRankMultivariateNormal, init_scale = 5e-3, init_loc_fn = infer.init_to_median)
-            results = self._train_SVI(guide_func,method='svi-mvn',ELBO_loss= infer.TraceMeanField_ELBO(16),train_kwargs=train_kwargs,num_round=3,lr_init = 1e-1, rkey=rkey,return_model = return_model,num_sample=num_sample)
+            results = self._train_SVI(guide_func,method='svi-mvn',ELBO_loss= infer.TraceMeanField_ELBO(5),train_kwargs=train_kwargs,num_round=3,lr_init = 5e-2, rkey=rkey,return_model = return_model,num_sample=num_sample)
         return results
 
     @abstractmethod
