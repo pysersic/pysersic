@@ -23,7 +23,7 @@ dependencies = ['numpy',
         'arviz',
         'tqdm',
         'asdf',
-        'equinox',
+        'equinox>=0.11',
         'interpax',
         ]
 version = "0.1.4"
