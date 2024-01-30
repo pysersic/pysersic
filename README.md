@@ -10,18 +10,19 @@
 
 ## Installation
 
-First you should install jax. The easiest way to do this is to use ``` pip install 'jax[cpu]' ```, however if you are on windows or planning on running it on a GPU, the installation can be a little more complicated, please see the guide [here](https://github.com/google/jax#installation). The other package dependencies for ```pysersic``` are:
+```pysersic``` now requies at least python version 3.9. To start you should have ```jax``` installed. The easiest way to do this is to use ``` pip install 'jax[cpu]' ```, however if you are on windows or planning on running it on a GPU, the installation can be a little more complicated, please see the guide [here](https://github.com/google/jax#installation). The other package dependencies for ```pysersic``` are:
 - arviz
 - asdf
 - astropy
 - corner
-- jax
 - matplotlib
 - numpy
 - numpyro
 - pandas
 - photutils
 - scipy
+- equinox
+- interpax
 - tqdm
 
 There is a provided minimal `environment.yml` capturing the above in the base repo, as well as an `environment-lock.yml` which has a full set of versions specified for every dependency --- if you are having trouble with the installation, creating an environment using this file should ensure you have a single set of package versions that `pysersic` is known to work with. (We don't recommend using the lock yml in general, as `pysersic` should be kept up to date with new versions of its dependencies.)
