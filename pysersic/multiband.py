@@ -1,5 +1,6 @@
 
 from .pysersic import BaseFitter, FitMulti,FitSingle
+from .priors import update_prior_suffix
 import abc
 import numpy as np
 import jax.numpy as jnp
@@ -70,7 +71,7 @@ class BaseMultiBandFitter(BaseFitter):
             assert band_fitter.prior.param_names  == self.param_names, "All fitters must have the same parameters"
 
         for band,fitter in zip(self.band_names,self.fitter_list):
-            fitter.prior.update_suffix(f'_{band}')
+            fitter.prior = update_prior_suffix(fitter.prior, f'_{band}')
 
         # Normalize lamdda's to help convergence
         self.wv_av = np.mean(self.wavelengths)

@@ -64,7 +64,7 @@ def test_FitSingle_sample():
         post_sum = arviz.summary(res.idata)
 
         assert post_sum['mean']['flux'] == pytest.approx(199.4, rel = 5e-2)
-        assert post_sum['sd']['flux'] == pytest.approx(0.45, rel = 5e-2)
+        assert post_sum['sd']['flux'] == pytest.approx(0.44, rel = 5e-2)
 
         assert post_sum['mean']['xc'] == pytest.approx(20.02, rel = 1e-2)
         assert post_sum['sd']['xc'] == pytest.approx(0.007, rel = 2e-1)

@@ -3,7 +3,7 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python<=3.11
+  - python>3.9<3.11 # Don't use 3.12 for now
   - pip
   - arviz
   - asdf
@@ -19,4 +19,6 @@ dependencies:
   - scipy
   - tqdm
   - pip:
+      - equinox
+      - interpax
       - pysersic
