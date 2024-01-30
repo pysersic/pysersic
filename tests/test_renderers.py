@@ -1,37 +1,45 @@
-from pysersic.rendering import PixelRenderer,FourierRenderer,HybridRenderer, BaseRenderer
+from pysersic.rendering import PixelRenderer,FourierRenderer,HybridRenderer
 from pysersic.rendering import render_sersic_2d
 from astropy.convolution import Gaussian2DKernel
 import pytest
 import jax.numpy as jnp
-from jax.scipy.special import gammainc
 from scipy.integrate import dblquad
 from functools import partial
- 
+import jax
+
+render_sersic_2d = jax.jit(render_sersic_2d)
 kern = Gaussian2DKernel(x_stddev= 1.5)
-psf = kern.array
+psf = jnp.array(kern.array)
 err_tol = 0.01 # 1% error tolerence for total flux
 
-@pytest.mark.parametrize("renderer", [PixelRenderer,FourierRenderer,HybridRenderer])
-@pytest.mark.parametrize("pos", [(50,50),(50.5,50.5),(50.25,50.25) ,(50.,50.5),(50.5,50.)]) 
-def test_point_source(renderer,pos):
+pixel_renderer = PixelRenderer((150,150), psf)
+fourier_renderer = FourierRenderer((150,150), psf)
+hybrid_renderer = HybridRenderer((150,150), psf)
+
+@partial(jax.jit, static_argnums = [1,])
+def get_models(params, profile_type: str):
+    im_px = pixel_renderer.render_source(params, profile_type=profile_type)
+    im_fr = fourier_renderer.render_source(params, profile_type=profile_type)
+    im_hy = hybrid_renderer.render_source(params, profile_type=profile_type)
+    return im_px, im_fr,im_hy
+
+@pytest.mark.parametrize("pos", [(75.,75.),(75.5,75.5),(75.25,75.25) ,(75.,75.5),(75.5,75.)]) 
+def test_point_source(pos):
     flux = 10.
     params = dict(flux = flux, xc = pos[0], yc = pos[1] )
-    renderer_test = renderer((100,100), psf)
-    im = renderer_test.render_source(params, 'pointsource')
-    assert pytest.approx(im.sum(), rel = err_tol) == flux
+    ims = get_models(params, 'pointsource')
+    assert pytest.approx(ims[0].sum(), rel = err_tol) == flux #pixel
+    assert pytest.approx(ims[1].sum(), rel = err_tol) == flux #fourier
+    assert pytest.approx(ims[2].sum(), rel = err_tol) == flux #hybrid
 
-
-@pytest.mark.parametrize("renderer", [PixelRenderer,FourierRenderer,HybridRenderer])
 @pytest.mark.parametrize("pos", [(75.,75.),(75.5,75.5),])
 @pytest.mark.parametrize("re", [3.,5.]) 
 @pytest.mark.parametrize("n", [1.5,2.5]) 
 @pytest.mark.parametrize("ellip", [0,0.5])
 @pytest.mark.parametrize("theta", [0,3.14/4.]) 
-def test_sersic(renderer,pos,re,n,ellip,theta):
-    renderer_test = renderer((150,150), psf)
+def test_sersic(pos,re,n,ellip,theta):
     flux = 10
     params = dict(flux = flux, xc = pos[0], yc = pos[1], n = n, ellip = ellip, theta = theta, r_eff = re )
-
     #Calculate fraction of flux contained in image
     int_test = partial(render_sersic_2d, xc = pos[0],yc = pos[1], flux = 10, r_eff = re, n = n, ellip = ellip,theta = theta)
     to_int = lambda x,y: float(int_test(x,y))
@@ -39,21 +47,19 @@ def test_sersic(renderer,pos,re,n,ellip,theta):
     hi_fun = lambda x: 150. 
     flux_int,_ = dblquad(to_int, 0.,150., lo_fun,hi_fun,epsrel=5.e-3)
     
-    im = renderer_test.render_source(params, 'sersic')
-    total = float( jnp.sum(im) )
-    assert pytest.approx(flux_int, rel = err_tol) == total
+    ims = get_models(params, 'sersic')
+    assert pytest.approx(float(ims[0].sum()), rel = err_tol) == flux_int #pixel
+    assert pytest.approx(float(ims[1].sum()), rel = err_tol) == flux_int #fourier
+    assert pytest.approx(float(ims[2].sum()), rel = err_tol) == flux_int #hybrid
 
-@pytest.mark.parametrize("renderer", [PixelRenderer,FourierRenderer,HybridRenderer])
-@pytest.mark.parametrize("prof", ['exp','dev']) 
+@pytest.mark.parametrize("prof", ['exp','dev'])
 @pytest.mark.parametrize("pos", [(75.,75.),(75.5,75.5),])
 @pytest.mark.parametrize("re", [3.,5.]) 
 @pytest.mark.parametrize("ellip", [0,0.5])
 @pytest.mark.parametrize("theta", [0,3.14/4.]) 
-def test_exp_dev(renderer,prof,pos,re,ellip,theta):
+def test_exp_dev(prof,pos,re,ellip,theta):
     flux = 10.
     params = dict(flux = flux, xc = pos[0], yc = pos[1], ellip = ellip, theta = theta, r_eff = re )
-    renderer_test = renderer((150,150), psf)
-    im = renderer_test.render_source(params, prof)
     
     if prof == 'exp':
         n=1.
@@ -68,6 +74,7 @@ def test_exp_dev(renderer,prof,pos,re,ellip,theta):
     hi_fun = lambda x: 150. 
     flux_int,_ = dblquad(to_int, 0.,150., lo_fun,hi_fun,epsrel=5.e-3)
 
-    total = float( jnp.sum(im) )
-    assert pytest.approx(flux_int, rel = err_tol) == total
-
+    ims = get_models(params, prof)
+    assert pytest.approx(float(ims[0].sum()), rel = err_tol) == flux_int #pixel
+    assert pytest.approx(float(ims[1].sum()), rel = err_tol) == flux_int #fourier
+    assert pytest.approx(float(ims[2].sum()), rel = err_tol) == flux_int #hybrid

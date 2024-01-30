@@ -3,8 +3,8 @@ from typing import Iterable, Optional, Tuple, Union
 
 import jax
 import jax.numpy as jnp
-import equinox as eqx
 import numpy as np
+import equinox as eqx
 from scipy.special import comb
 from interpax import interp1d
 from functools import partial
@@ -229,8 +229,8 @@ class PixelRenderer(BaseRenderer):
     y_os_lo : int
     y_os_hi : int
 
-    X_os = jnp.array
-    Y_os = jnp.array
+    X_os : jnp.array
+    Y_os : jnp.array
     
     def __init__(self, 
             im_shape: Iterable, 
@@ -255,7 +255,7 @@ class PixelRenderer(BaseRenderer):
         self.num_os = num_os
         
         #Use Gauss-Legendre coefficents for better integration when oversampling
-        dx,w = np.polynomial.legendre.leggauss(self.num_os)
+        dx,w = jnp.array( np.polynomial.legendre.leggauss(self.num_os) )
         w = w/2. 
         dx = dx/2.
         
