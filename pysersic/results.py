@@ -337,7 +337,7 @@ class PySersicResults():
         tree['input_data']['psf'] = np.array(self.psf)
         tree['input_data']['mask'] = np.array(self.mask)
         tree['loss_func'] = str(self.loss_func)
-        tree['renderer'] = str(self.renderer)
+        tree['rendere_type'] = str( type(self.renderer) )
         tree['method_used'] = self.runtype
         if self.runtype == 'svi':
             tree['svi_method_used'] = self.svi_method_used

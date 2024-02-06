@@ -40,7 +40,7 @@ def test_FitSingle_posterior(method):
 
         fitter_single = FitSingle(im_s,rms,psf,prior)
 
-        res = fitter_single.estimate_posterior(method, rkey = PRNGKey(3))
+        res = fitter_single.estimate_posterior(method = method, rkey = PRNGKey(3))
         post_sum = res.summary()
 
         assert post_sum['mean']['flux'] == pytest.approx(199.4, rel = 1e-2)
@@ -110,7 +110,7 @@ def test_FitMulti_map(sky_type):
 
 @pytest.mark.parametrize('method',['laplace','svi-mvn','svi-flow'])
 def test_FitMulti_posterior(method):
-        res = multi_fitter.estimate_posterior(method, rkey = PRNGKey(3))
+        res = multi_fitter.estimate_posterior(method = method, rkey = PRNGKey(3))
         post_sum = res.summary()
         assert post_sum['mean']['flux_0'] == pytest.approx(150.4, rel = 1e-2)
         assert post_sum['sd']['flux_0'] == pytest.approx(0.45, rel = 2e-1)

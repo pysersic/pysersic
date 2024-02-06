@@ -19,11 +19,13 @@ from .exceptions import ShapeMatchError,KernelError
 from .priors import PySersicMultiPrior, PySersicSourcePrior, base_profile_params
 from .rendering import BaseRenderer, HybridRenderer, base_profile_types
 from .results import PySersicResults
+from jax.typing import ArrayLike
 
 from .loss import gaussian_loss
 
-ArrayLike = Union[np.array, jax.numpy.array]
 
+def identity(x : Callable)-> Callable:
+    return x
 
 class BaseFitter(ABC):
     """
@@ -96,6 +98,7 @@ class BaseFitter(ABC):
 
 
     def sample(self,
+                rkey : jax.random.PRNGKey,
                 num_samples: int = 1000,
                 num_warmup: int = 1000,
                 num_chains: int = 2,
@@ -103,8 +106,7 @@ class BaseFitter(ABC):
                 sampler_kwargs: Optional[dict] ={},
                 mcmc_kwargs: Optional[dict] = {},
                 return_model: Optional[bool] = True,
-                reparam_func: Optional[Callable] = lambda x: x,
-                rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3)     
+                reparam_func: Optional[Callable] = identity,
         ) -> pandas.DataFrame:
         """ Perform inference using a NUTS sampler
 
@@ -147,14 +149,14 @@ class BaseFitter(ABC):
     def _train_SVI(self,
             autoguide: numpyro.infer.autoguide.AutoContinuous,
             method:str,
-            ELBO_loss: Optional[Callable] = infer.Trace_ELBO(1),
+            rkey: jax.random.PRNGKey,
+            ELBO_loss: Optional[Callable] = infer.Trace_ELBO(5),
             lr_init: Optional[int] = 1e-2,
             num_round: Optional[int] = 3,
             SVI_kwargs: Optional[dict]= {},
             train_kwargs: Optional[dict] = {},
             return_model: Optional[bool] = True,
             num_sample: Optional[int] = 1_000,
-            rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(6),
             )-> pandas.DataFrame:
         """
         Internal function to perform inference using stochastic variational inference.
@@ -204,8 +206,8 @@ class BaseFitter(ABC):
 
     
     def find_MAP(self,
+                rkey: jax.random.PRNGKey,
                 return_model: Optional[bool] = True,
-                rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3),
                 purge_extra: Optional[bool] = True):
         """Find the "best-fit" parameters as the maximum a-posteriori and return a dictionary with values for the parameters.
 
@@ -250,10 +252,10 @@ class BaseFitter(ABC):
         return real_out
     
     def estimate_posterior(self,
+                        rkey : jax.random.PRNGKey,
                         method : str='laplace',
                         return_model: bool = True,
-                        num_sample: Optional[int] = 1_000,
-                        rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(6),
+                        num_sample: Optional[int] = 1_000
                         ) -> pandas.DataFrame:
         """Estimate the posterior using a method other than MCMC sampling. Generally faster than MCMC, but could be less accurate.
         Current Options are:
@@ -284,7 +286,7 @@ class BaseFitter(ABC):
             results = self._train_SVI(guide_func,method=method, lr_init = 0.05, train_kwargs=train_kwargs, return_model = return_model, rkey=rkey, num_sample=num_sample)
         elif method=='svi-flow':
             train_kwargs = dict(patience = 500, max_train = 20000)
-            guide_func = partial(infer.autoguide.AutoBNAFNormal, num_flows =3,hidden_factors = [5,5], init_loc_fn = infer.init_to_median)
+            guide_func = partial(infer.autoguide.AutoBNAFNormal, num_flows =1,hidden_factors = [16,8], init_loc_fn = infer.init_to_median)
             results = self._train_SVI(guide_func,method='svi-flow',ELBO_loss= infer.Trace_ELBO(8),train_kwargs=train_kwargs,num_round=3,lr_init = 5e-2, rkey=rkey,return_model = return_model,num_sample=num_sample)
         elif method=='svi-mvn':
             train_kwargs = dict(patience = 200, max_train = 5000)

@@ -347,7 +347,7 @@ class FourierRenderer(BaseRenderer):
     frac_end : float = eqx.field(static=True)
     n_sigma : int = eqx.field(static=True)
     precision : int = eqx.field(static=True)
-    use_poly_fit_amps : bool = eqx.field(static=True)
+    use_interp_amps : bool = eqx.field(static=True)
 
     etas : jax.numpy.array
     betas : jax.numpy.array
@@ -362,7 +362,7 @@ class FourierRenderer(BaseRenderer):
             frac_end: Optional[float] = 15., 
             n_sigma: Optional[int] = 15, 
             precision: Optional[int] = 10,
-            use_poly_fit_amps: Optional[bool] = True)-> None:
+            use_interp_amps: Optional[bool] = True)-> None:
         """Initialize a Fourier renderer class
 
         Parameters
@@ -379,17 +379,17 @@ class FourierRenderer(BaseRenderer):
             Number of Gaussian Components, by default 15
         precision : Optional[int], optional
             precision value used in calculating Gaussian components, see Shajib (2019) for more details, by default 10
-        use_poly_fit_amps: Optional[bool]
-            If True, instead of performing the direct calculation in Shajib (2019) at each iteration, a polynomial approximation is fit and used. The amplitudes of each gaussian component amplitudes as a function of Sersic index are fit with a polynomial. This smooth approximation is then used at each interval. While this adds a a little extra to the renderering error budget (roughly 1\%) but is much more numerically stable owing to the smooth gradients. If this matters for you then set this to False and make sure to enable jax's 64 bit capabilities which we find helps the stability.
+        use_interp_amps: Optional[bool]
+            If True, instead of performing the direct calculation in Shajib (2019) at each iteration, a polynomial approximation is fit and used. The amplitudes of each gaussian component amplitudes as a function of Sersic index are interpolated based on a computed grid. This is much more numerically stable owing to the smooth gradients. If this matters for you then set this to False and make sure to enable jax's 64 bit capabilities which we find helps the stability.
         """
         super().__init__(im_shape, pixel_PSF)
         self.frac_start = frac_start
         self.frac_end = frac_end
         self.n_sigma = n_sigma
         self.precision = precision
-        self.use_poly_fit_amps = use_poly_fit_amps
+        self.use_interp_amps = use_interp_amps
         self.etas, self.betas = calculate_etas_betas(self.precision)
-        if not use_poly_fit_amps and not jax.config.x64_enabled:
+        if not use_interp_amps and not jax.config.x64_enabled:
             warnings.warn("!! WARNING !! - Gaussian decomposition can be numerically unstable when using jax's default 32 bit. Please either enable jax 64 bit or set 'use_poly_amps' = True in the renderer kwargs")
         
         #Fit polynomial for smooth interpolation
@@ -397,7 +397,7 @@ class FourierRenderer(BaseRenderer):
         self.amps_n_ax = jax.vmap( lambda n: sersic_gauss_decomp(1.,1.,n,self.etas,self.betas,self.frac_start,self.frac_end,self.n_sigma)[0] ) (self.n_ax)
             
     def get_amps_sigmas(self, flux, r_eff,n):
-        if self.use_poly_fit_amps:
+        if self.use_interp_amps:
             amps_norm = interp1d(n,self.n_ax, self.amps_n_ax, method='cubic2')
             amps = amps_norm*flux
             sigmas = jnp.logspace(jnp.log10(r_eff*self.frac_start),jnp.log10(r_eff*self.frac_end),num = self.n_sigma)
@@ -481,7 +481,7 @@ class HybridRenderer(FourierRenderer):
             n_sigma: Optional[int] = 15, 
             num_pixel_render: Optional[int] = 3,
             precision: Optional[int] = 10,
-            use_poly_fit_amps: Optional[bool] = True)-> None:
+            use_interp_amps: Optional[bool] = True)-> None:
         """Initialize a  HybridRenderer class
 
         Parameters
@@ -500,10 +500,10 @@ class HybridRenderer(FourierRenderer):
             Number of components to render in pixel space, counts back from largest component
         precision : Optional[int], optional
             precision value used in calculating Gaussian components, see Shajib (2019) for more details, by default 10
-        use_poly_fit_amps: Optional[bool]
-            If True, instead of performing the direct calculation in Shajib (2019) at each iteration, a polynomial approximation is fit and used. The amplitudes of each gaussian component amplitudes as a function of Sersic index are fit with a polynomial. This smooth approximation is then used at each interval. While this adds a a little extra to the renderering error budget (roughly 1\%) but is much more numerically stable owing to the smooth gradients. If this matters for you then set this to False and make sure to enable jax's 64 bit capabilities which we find helps the stability.
+        use_interp_amps: Optional[bool]
+            If True, instead of performing the direct calculation in Shajib (2019) at each iteration, a polynomial approximation is fit and used. The amplitudes of each gaussian component amplitudes as a function of Sersic index are interpolated based on a computed grid. This is much more numerically stable owing to the smooth gradients. If this matters for you then set this to False and make sure to enable jax's 64 bit capabilities which we find helps the stability.
         """
-        super().__init__(im_shape, pixel_PSF, frac_start,frac_end,n_sigma,precision, use_poly_fit_amps)
+        super().__init__(im_shape, pixel_PSF, frac_start,frac_end,n_sigma,precision, use_interp_amps)
 
         self.num_pixel_render = num_pixel_render
         self.w_real = jnp.arange(self.n_sigma - self.num_pixel_render, self.n_sigma, dtype=jnp.int32)
