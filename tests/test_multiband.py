@@ -61,7 +61,7 @@ def test_multiband(fitter):
     assert 'yc' in  mb_fitter.unlinked_params
     assert 'xc' in  mb_fitter.const_params
 
-    res = mb_fitter.estimate_posterior()
+    res = mb_fitter.estimate_posterior(rkey = PRNGKey(11))
     summ_dict = res.summary().to_dict(orient = 'index')
 
     #Make sure all of the variables that should exist do
