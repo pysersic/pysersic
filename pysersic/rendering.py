@@ -831,6 +831,7 @@ def render_gaussian_fourier(
     jax.numpy.array
         Sum of components evaluated at FX and FY
     """
+    theta = theta + (jnp.pi / 2.0)
     Ui = FX * jnp.cos(theta) + FY * jnp.sin(theta)
     Vi = -1 * FX * jnp.sin(theta) + FY * jnp.cos(theta)
 
@@ -912,7 +913,7 @@ def render_gaussian_pixel(
     """
     X_bar = X - xc
     Y_bar = Y - yc
-
+    theta = theta + (jnp.pi / 2.0)
     Xi = X_bar * jnp.cos(theta) + Y_bar * jnp.sin(theta)
     Yi = -1 * X_bar * jnp.sin(theta) + Y_bar * jnp.cos(theta)
 
@@ -1047,7 +1048,7 @@ def sersic_gauss_decomp(
     sigma_start : float
         width for the smallest Gaussian component
     sigma_end : float
-         width for the largest Gaussian component
+        width for the largest Gaussian component
     n_comp : int
         Number of Gaussian components
 
