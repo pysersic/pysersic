@@ -44,6 +44,8 @@ base_profile_types = [
     "pointsource",
     "exp",
     "dev",
+    'sersic_bend',
+
 ]
 base_profile_params = dict(
     zip(
@@ -67,6 +69,7 @@ base_profile_params = dict(
             ["xc", "yc", "flux"],
             ["xc", "yc", "flux", "r_eff", "ellip", "theta"],
             ["xc", "yc", "flux", "r_eff", "ellip", "theta"],
+            ["xc", "yc", "flux", "r_eff", "n", "ellip", "theta","a_m"],
         ],
     )
 )
@@ -966,7 +969,7 @@ class SourceProperties:
         prior.set_gaussian_prior("xc", self.xc_guess, 1.0)
         prior.set_gaussian_prior("yc", self.yc_guess, 1.0)
 
-        if profile_type in ["exp", "dev", "sersic", "sersic_pointsource"]:
+        if profile_type in ["exp", "dev", "sersic", "sersic_pointsource",'sersic_bend']:
             prior.set_truncated_gaussian_prior(
                 "r_eff", self.r_eff_guess, self.r_eff_guess_err, low=0.5
             )
@@ -974,12 +977,14 @@ class SourceProperties:
             # prior.set_custom_prior('theta',
             #                       dist.VonMises(loc = self.theta_guess,concentration=2),
             #                       reparam= infer.reparam.CircularReparam() )
-            prior.set_uniform_prior("theta", 0.0, 2.0 * np.pi)
+            prior.set_uniform_prior("theta", 0.0, np.pi)
 
             if "sersic" in profile_type:
                 prior.set_uniform_prior("n", 0.65, 8)
                 if profile_type == "sersic_pointsource":
                     prior.set_uniform_prior("f_ps", 0.0, 1.0)
+                if profile_type == 'sersic_bend':
+                    prior.set_uniform_prior('a_m', 0.,0.5)
 
         elif profile_type == "doublesersic":
             prior.set_uniform_prior("f_1", 0.0, 1.0)

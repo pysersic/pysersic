@@ -8,6 +8,7 @@ import jax.numpy as jnp
 import numpy as np
 from interpax import interp1d
 from scipy.special import comb
+from jax.scipy.special import erf
 
 from .exceptions import *
 
@@ -18,6 +19,7 @@ base_profile_types = [
     "pointsource",
     "exp",
     "dev",
+    'sersic_bend',
 ]
 base_profile_params = dict(
     zip(
@@ -41,6 +43,8 @@ base_profile_params = dict(
             ["xc", "yc", "flux"],
             ["xc", "yc", "flux", "r_eff", "ellip", "theta"],
             ["xc", "yc", "flux", "r_eff", "ellip", "theta"],
+            ["xc", "yc", "flux", "r_eff", "n", "ellip", "theta","a_m"],
+
         ],
     )
 )
@@ -374,7 +378,23 @@ class PixelRenderer(BaseRenderer):
             sub_im_os
         )
         return im
+    
+    def render_int_sersic_bend(self, xc, yc, flux, r_eff, n, ellip, theta,a_m):
+        
+        im_no_os = render_sersic_bend_2d(
+            self.X, self.Y, xc, yc, flux, r_eff, n, ellip, theta, a_m
+        )
 
+        sub_im_os = render_sersic_bend_2d(
+            self.X_os, self.Y_os, xc, yc, flux, r_eff, n, ellip, theta, a_m
+        )
+        sub_im_os = jnp.sum(sub_im_os * self.w_os, axis=(2, 3))
+
+        im = im_no_os.at[self.x_os_lo : self.x_os_hi, self.y_os_lo : self.y_os_hi].set(
+            sub_im_os
+        )
+        return im
+    
     def render_sersic(self, params: dict) -> jax.numpy.array:
         """Render a sersic profile
 
@@ -410,6 +430,43 @@ class PixelRenderer(BaseRenderer):
             params["theta"],
         )
         return self.fft_zeros, im_int, self.img_zeros
+    
+    def render_sersic_bend(self, params: dict) -> jax.numpy.array:
+        """Render a sersic profile
+
+        Parameters
+        ----------
+        xc : float
+            Central x position
+        yc : float
+            Central y position
+        flux : float
+            Total flux
+        r_eff : float
+            Effective radius
+        n : float
+            Sersic index
+        ellip : float
+            Ellipticity
+        theta : float
+            Position angle in radians
+
+        Returns
+        -------
+        jax.numpy.array
+            Rendered Sersic model
+        """
+        im_int = self.render_int_sersic_bend(
+            params["xc"],
+            params["yc"],
+            params["flux"],
+            params["r_eff"],
+            params["n"],
+            params["ellip"],
+            params["theta"],
+            params['a_m'],
+        )
+        return self.fft_zeros, im_int, self.img_zeros
 
     def render_pointsource(self, params: dict) -> jax.numpy.array:
         """Render a Point source by interpolating given PSF into image. Currently jax only supports linear intepolation.
@@ -440,6 +497,85 @@ class PixelRenderer(BaseRenderer):
 
         return self.fft_zeros, self.img_zeros, shifted_psf
 
+class LensingRenderer(PixelRenderer):
+    mapping_matrix: jax.numpy.array
+    PSF_fft_img_plane: jax.numpy.array
+    PSF_img_plane: jax.numpy.array
+    img_plane_shape: tuple = eqx.field(static=True)
+    source_plane_shape: tuple = eqx.field(static=True)
+
+    def __init__(
+        self,
+        im_shape: Iterable,
+        pixel_PSF: jax.numpy.array,
+        mapping_matrix: jax.numpy.array,
+        source_plane_shape: Iterable,
+        os_pixel_size: Optional[int] = 6,
+        num_os: Optional[int] = 4,
+    ) -> None:
+        """Initialize the PixelRenderer class
+
+        Parameters
+        ----------
+        im_shape : Iterable
+            Tuple or list containing the shape of the desired output
+        pixel_PSF : jax.numpy.array
+            Pixelized version of the PSF
+        os_pixel_size : Optional[int], optional
+            Size of box around the center of the image to perform pixel oversampling
+        num_os : Optional[int], optional
+            Number of points to oversample by in each direction, by default 8
+        """
+
+        ## Assumning the mapping matrix is (N_sourcexN_source, N_imxN_im)
+        self.mapping_matrix = mapping_matrix
+        self.source_plane_shape = source_plane_shape #Assume it's square?
+        self.img_plane_shape = im_shape
+        source_plane_psf = generate_gausian_psf(sigma = 0.75,size = 12)
+        self.PSF_img_plane = pixel_PSF
+        super().__init__(self.source_plane_shape, source_plane_psf, os_pixel_size, num_os)
+        
+
+        f1d1 = jnp.fft.rfftfreq(self.img_plane_shape[0])
+        f1d2 = jnp.fft.fftfreq(self.img_plane_shape[1])
+        FX_img_plane, FY_image_plane = jnp.meshgrid(f1d1, f1d2)
+        fft_shift_arr_x = jnp.exp(
+            jax.lax.complex(0.0, -1.0)
+            * 2.0
+            * 3.1415
+            * -1
+            * (self.PSF_img_plane.shape[0] / 2.0 - 0.5)
+            * FX_img_plane
+        )
+        fft_shift_arr_y = jnp.exp(
+            jax.lax.complex(0.0, -1.0)
+            * 2.0
+            * 3.1415
+            * -1
+            * (self.PSF_img_plane.shape[1] / 2.0 - 0.5)
+            * FY_image_plane
+        )
+        self.PSF_fft_img_plane = (
+            jnp.fft.rfft2(self.PSF_img_plane, s=self.img_plane_shape)
+            * fft_shift_arr_x
+            * fft_shift_arr_y
+        )
+
+    def source_to_image_mapping(self, source_plane_image):
+        #Do lensing black magic
+        return jnp.zeros(self.img_plane_shape) # Placeholder
+    
+    def conv_img_plane(self, image):
+        img_fft = jnp.fft.rfft2(image)
+        conv_fft = img_fft * self.PSF_fft_img_plane
+        conv_im = jnp.fft.irfft2(conv_fft, s=self.img_plane_shape)
+        return conv_im
+
+    def combine_scene(self, F_im, source_plane_img, obs_im):
+        #assume F_im and obs_im are not used
+        img_plane_intrinsic = self.source_to_image_mapping(source_plane_img)
+        img_plane_obs = self.conv_img_plane(img_plane_intrinsic)
+        return img_plane_obs
 
 class FourierRenderer(BaseRenderer):
     """
@@ -983,6 +1119,62 @@ def render_sersic_2d(
     out = amplitude * jnp.exp(-bn * (z ** (1 / n) - 1)) / (1.0 - ellip)
     return out
 
+def render_sersic_bend_2d(
+    X: jax.numpy.array,
+    Y: jax.numpy.array,
+    xc: float,
+    yc: float,
+    flux: float,
+    r_eff: float,
+    n: float,
+    ellip: float,
+    theta: float,
+    a_m: float,
+) -> jax.numpy.array:
+    """Evalulate a 2D Sersic distribution at given locations
+
+    Parameters
+    ----------
+    X : jax.numpy.array
+        x locations to evaluate at
+    Y : jax.numpy.array
+        y locations to evaluate at
+    xc : float
+        Central x position
+    yc : float
+        Central y position
+    flux : float
+        Total flux
+    r_eff : float
+        Effective radius
+    n : float
+        Sersic index
+    ellip : float
+        Ellipticity
+    theta : float
+        Position angle in radians [now measured from north]
+
+    Returns
+    -------
+    jax.numpy.array
+        Sersic model evaluated at given locations
+    """
+    bn = 1.9992 * n - 0.3271
+    a, b = r_eff, (1 - ellip) * r_eff
+    theta = theta + (jnp.pi / 2.0)
+    cos_theta, sin_theta = jnp.cos(theta), jnp.sin(theta)
+    x_maj = (X - xc) * cos_theta + (Y - yc) * sin_theta
+    x_min = -(X - xc) * sin_theta + (Y - yc) * cos_theta
+
+    x_min_prime  = x_min + (a_m*x_maj)**2
+    amplitude = (
+        flux
+        * bn ** (2 * n)
+        / (jnp.exp(bn + jax.scipy.special.gammaln(2 * n)) * r_eff**2 * jnp.pi * 2 * n)
+    )
+    z = jnp.sqrt((x_maj / a) ** 2 + (x_min_prime / b) ** 2)
+    out = amplitude * jnp.exp(-bn * (z ** (1 / n) - 1)) / (1.0 - ellip)
+    return out
 
 def calculate_etas_betas(precision: int) -> Tuple[jax.numpy.array, jax.numpy.array]:
     """Calculate the weights and nodes for the Gaussian decomposition described in Shajib (2019) (https://arxiv.org/abs/1906.08263)
@@ -1073,3 +1265,13 @@ def sersic_gauss_decomp(
     amps = amps * 2 * jnp.pi * sigmas * sigmas
 
     return amps, sigmas
+
+def generate_gausian_psf(sigma:float, size:int) -> jax.numpy.array:
+    cent = size/2.
+    ax_psf = jnp.arange(size)
+    c = 1./jnp.sqrt(2*sigma**2)
+    xpsf,ypsf = jnp.meshgrid(ax_psf,ax_psf)
+    xpsf = xpsf-cent
+    ypsf = ypsf - cent
+    psf = 1./4. * (erf(c*(xpsf-0.5))  - erf(c*(xpsf+0.5)))* (erf(c*(ypsf-0.5))  - erf(c*(ypsf+0.5)))
+    return psf
