@@ -40,6 +40,7 @@ def render_tilted_plane_sky(X, Y, back, x_sl, y_sl):
 base_profile_types = [
     "sersic",
     "doublesersic",
+    "sersic_exp",
     "sersic_pointsource",
     "pointsource",
     "exp",
@@ -60,6 +61,18 @@ base_profile_params = dict(
                 "ellip_1",
                 "r_eff_2",
                 "n_2",
+                "ellip_2",
+                "theta",
+            ],
+            [
+                "xc",
+                "yc",
+                "flux",
+                "f_1",
+                "r_eff_1",
+                "n",
+                "ellip_1",
+                "r_eff_2",
                 "ellip_2",
                 "theta",
             ],
@@ -981,7 +994,7 @@ class SourceProperties:
                 if profile_type == "sersic_pointsource":
                     prior.set_uniform_prior("f_ps", 0.0, 1.0)
 
-        elif profile_type == "doublesersic":
+        elif profile_type in ["doublesersic", "sersic_exp"]:
             prior.set_uniform_prior("f_1", 0.0, 1.0)
 
             # prior.set_custom_prior('theta',
@@ -1003,9 +1016,11 @@ class SourceProperties:
 
             prior.set_uniform_prior("ellip_1", 0, 0.9)
             prior.set_uniform_prior("ellip_2", 0, 0.9)
-
-            prior.set_truncated_gaussian_prior("n_1", 4, 1, low=0.65, high=8)
-            prior.set_truncated_gaussian_prior("n_2", 1, 1, low=0.65, high=8)
+            if profile_type == "doublesersic":
+                prior.set_truncated_gaussian_prior("n_1", 4, 1, low=0.65, high=8)
+                prior.set_truncated_gaussian_prior("n_2", 1, 1, low=0.65, high=8)
+            else:
+                prior.set_truncated_gaussian_prior("n", 4, 1, low=0.65, high=8)
 
         return prior
 

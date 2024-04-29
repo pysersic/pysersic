@@ -14,6 +14,7 @@ from .exceptions import *
 base_profile_types = [
     "sersic",
     "doublesersic",
+    "sersic_exp",
     "sersic_pointsource",
     "pointsource",
     "exp",
@@ -34,6 +35,18 @@ base_profile_params = dict(
                 "ellip_1",
                 "r_eff_2",
                 "n_2",
+                "ellip_2",
+                "theta",
+            ],
+            [
+                "xc",
+                "yc",
+                "flux",
+                "f_1",
+                "r_eff_1",
+                "ellip_1",
+                "r_eff_2",
+                "n",
                 "ellip_2",
                 "theta",
             ],
@@ -168,7 +181,7 @@ class BaseRenderer(eqx.Module):
 
         return F1 + F2, im_int_1 + im_int_2, im_obs_1 + im_obs_2
 
-    def render_exp_sersic(self, params: dict):
+    def render_sersic_exp(self, params: dict):
         dict_1 = {
             "xc": params["xc"],
             "yc": params["yc"],
