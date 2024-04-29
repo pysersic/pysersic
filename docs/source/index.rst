@@ -46,6 +46,7 @@ The empirically derived Sérsic profile is the most common parametric form for t
    multi-source-fitting
    manual-priors
    multiband-example
+   bulge-disk-decomposition
 
 .. toctree::
    :maxdepth: 1

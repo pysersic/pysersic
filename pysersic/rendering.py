@@ -14,6 +14,7 @@ from .exceptions import *
 base_profile_types = [
     "sersic",
     "doublesersic",
+    "sersic_exp",
     "sersic_pointsource",
     "pointsource",
     "exp",
@@ -34,6 +35,18 @@ base_profile_params = dict(
                 "ellip_1",
                 "r_eff_2",
                 "n_2",
+                "ellip_2",
+                "theta",
+            ],
+            [
+                "xc",
+                "yc",
+                "flux",
+                "f_1",
+                "r_eff_1",
+                "ellip_1",
+                "r_eff_2",
+                "n",
                 "ellip_2",
                 "theta",
             ],
@@ -165,6 +178,29 @@ class BaseRenderer(eqx.Module):
         }
         F1, im_int_1, im_obs_1 = self.render_sersic(dict_1)
         F2, im_int_2, im_obs_2 = self.render_sersic(dict_2)
+
+        return F1 + F2, im_int_1 + im_int_2, im_obs_1 + im_obs_2
+
+    def render_sersic_exp(self, params: dict):
+        dict_1 = {
+            "xc": params["xc"],
+            "yc": params["yc"],
+            "flux": params["flux"] * params["f_1"],
+            "n": params["n"],
+            "ellip": params["ellip_1"],
+            "theta": params["theta"],
+            "r_eff": params["r_eff_1"],
+        }
+        dict_2 = {
+            "xc": params["xc"],
+            "yc": params["yc"],
+            "flux": params["flux"] * (1.0 - params["f_1"]),
+            "ellip": params["ellip_2"],
+            "theta": params["theta"],
+            "r_eff": params["r_eff_2"],
+        }
+        F1, im_int_1, im_obs_1 = self.render_sersic(dict_1)
+        F2, im_int_2, im_obs_2 = self.render_exp(dict_2)
 
         return F1 + F2, im_int_1 + im_int_2, im_obs_1 + im_obs_2
 
