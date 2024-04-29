@@ -168,6 +168,29 @@ class BaseRenderer(eqx.Module):
 
         return F1 + F2, im_int_1 + im_int_2, im_obs_1 + im_obs_2
 
+    def render_exp_sersic(self, params: dict):
+        dict_1 = {
+            "xc": params["xc"],
+            "yc": params["yc"],
+            "flux": params["flux"] * params["f_1"],
+            "n": params["n"],
+            "ellip": params["ellip_1"],
+            "theta": params["theta"],
+            "r_eff": params["r_eff_1"],
+        }
+        dict_2 = {
+            "xc": params["xc"],
+            "yc": params["yc"],
+            "flux": params["flux"] * (1.0 - params["f_1"]),
+            "ellip": params["ellip_2"],
+            "theta": params["theta"],
+            "r_eff": params["r_eff_2"],
+        }
+        F1, im_int_1, im_obs_1 = self.render_sersic(dict_1)
+        F2, im_int_2, im_obs_2 = self.render_exp(dict_2)
+
+        return F1 + F2, im_int_1 + im_int_2, im_obs_1 + im_obs_2
+
     def render_sersic_pointsource(self, params: dict):
         pointsource_dict = {}
         sersic_dict = params.copy()
