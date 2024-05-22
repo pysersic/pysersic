@@ -668,7 +668,7 @@ def parse_mask(mask: ArrayLike = None, data: ArrayLike = None):
     if mask is None:
         return jnp.ones_like(data).astype(jnp.bool_)
     else:
-        return jnp.logical_not(jnp.array(mask.astype(int))).astype(jnp.bool_)
+        return jnp.logical_not(jnp.array(mask.astype(float))).astype(jnp.bool_)
 
 
 def check_input_data(
