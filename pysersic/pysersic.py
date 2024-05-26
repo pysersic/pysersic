@@ -722,3 +722,6 @@ def check_input_data(
         if mask.shape != data.shape:
             raise ShapeMatchError("Mask ndims must match input data ndims.")
     return True
+
+
+__version__ = "0.1.5"
