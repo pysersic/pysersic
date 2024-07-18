@@ -2,7 +2,7 @@ import copy
 import warnings
 from abc import ABC, abstractmethod
 from functools import partial
-from typing import Callable, Optional
+from typing import Callable, Optional, Union
 
 import jax
 import jax.numpy as jnp
@@ -10,7 +10,7 @@ import numpy as np
 import numpyro
 import pandas
 import tqdm
-from jax.random import PRNGKey
+from jax.random import PRNGKey, split
 from jax.typing import ArrayLike
 from numpyro import deterministic, infer, optim
 from numpyro.handlers import condition, trace
@@ -110,7 +110,7 @@ class BaseFitter(ABC):
         sampler_kwargs: Optional[dict] = {},
         mcmc_kwargs: Optional[dict] = {},
         return_model: Optional[bool] = True,
-        reparam_func: Optional[Callable] = identity,
+        reparam_func: Optional[Union[Callable,str]] = identity,
     ) -> pandas.DataFrame:
         """Perform inference using a NUTS sampler
 
@@ -140,7 +140,15 @@ class BaseFitter(ABC):
         """
 
         model = self.build_model(return_model=return_model)
-        model = reparam_func(model)
+        if type(reparam_func) == (str):
+            print (f'Running svi model for reparam: {reparam_func}')
+            svi_res_cur =  self.estimate_posterior(rkey = split(rkey)[0],method = reparam_func, return_model = False)
+            neutra = infer.reparam.NeuTraReparam(svi_res_cur.input['guide'], svi_res_cur.input['svi_result'].params)
+            reparam_func_use = neutra.reparam
+        else:
+            reparam_func_use = reparam_func
+        
+        model = reparam_func_use(model)
         sampler = infer.MCMC(
             infer.NUTS(model, init_strategy=init_strategy, **sampler_kwargs),
             num_chains=num_chains,
