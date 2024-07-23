@@ -711,6 +711,8 @@ def check_input_data(
     psf = jnp.array(psf)
     if data.shape != rms.shape:
         raise ShapeMatchError("RMS map ndims must match input data ndims.")
+    if len(rms.flatten()[rms.flatten()<0]) > 0: 
+        raise ValueError("RMS/Uncertainty image cannot contain negative values.")
     if jnp.median(rms) > 5 * jnp.std(data):
         warnings.warn(
             "Input RMS map appears to be highly offset (>5x) in magnitude from the rms of the pixels in the input image."
