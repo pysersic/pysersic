@@ -287,6 +287,7 @@ class BasePrior(eqx.Module):
                 sky_guess=sky_guess, sky_guess_err=sky_guess_err, suffix=suffix
             )
 
+        self.reparam_dict.update(self.sky_prior.reparam_dict)
     @property
     def param_names(self):
         return list(self.dist_dict.keys())
