@@ -45,6 +45,7 @@ base_profile_types = [
     "pointsource",
     "exp",
     "dev",
+    "spergel"
 ]
 base_profile_params = dict(
     zip(
@@ -80,6 +81,7 @@ base_profile_params = dict(
             ["xc", "yc", "flux"],
             ["xc", "yc", "flux", "r_eff", "ellip", "theta"],
             ["xc", "yc", "flux", "r_eff", "ellip", "theta"],
+        ["xc", "yc", "flux", "r_eff", "nu", "ellip", "theta"],
         ],
     )
 )
@@ -980,7 +982,7 @@ class SourceProperties:
         prior.set_gaussian_prior("xc", self.xc_guess, 1.0)
         prior.set_gaussian_prior("yc", self.yc_guess, 1.0)
 
-        if profile_type in ["exp", "dev", "sersic", "sersic_pointsource"]:
+        if profile_type in ["exp", "dev", "sersic", "sersic_pointsource","spergel"]:
             prior.set_truncated_gaussian_prior(
                 "r_eff", self.r_eff_guess, self.r_eff_guess_err, low=0.5
             )
@@ -994,6 +996,8 @@ class SourceProperties:
                 prior.set_uniform_prior("n", 0.65, 8)
                 if profile_type == "sersic_pointsource":
                     prior.set_uniform_prior("f_ps", 0.0, 1.0)
+            if profile_type == "spergel":
+                prior.set_custom_prior('nu', dist.TruncatedCauchy(loc = -0.7,scale = 0.25, low = -0.7, high = 4.6))
 
         elif profile_type in ["doublesersic", "sersic_exp"]:
             prior.set_uniform_prior("f_1", 0.0, 1.0)

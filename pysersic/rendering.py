@@ -19,6 +19,7 @@ base_profile_types = [
     "pointsource",
     "exp",
     "dev",
+    "spergel"
 ]
 base_profile_params = dict(
     zip(
@@ -54,6 +55,7 @@ base_profile_params = dict(
             ["xc", "yc", "flux"],
             ["xc", "yc", "flux", "r_eff", "ellip", "theta"],
             ["xc", "yc", "flux", "r_eff", "ellip", "theta"],
+            ["xc", "yc", "flux", "r_eff", "nu", "ellip", "theta"]
         ],
     )
 )
@@ -273,6 +275,21 @@ class BaseRenderer(eqx.Module):
         to_sersic = dict(params, n=4.0)
         return self.render_sersic(to_sersic)
 
+    def render_spergel(self, params: dict):
+        
+        F_im = render_spergel_fourier(
+            self.FX, 
+            self.FY,
+            params['r_eff'], 
+            params['flux'], 
+            params['nu'],
+            params['xc'],
+            params['yc'], 
+            params['theta'], 
+            1. - params['ellip']
+        )
+        return F_im, self.img_zeros, self.img_zeros
+    
     def render_for_model(self, param_dict, types, suffix):
         F_tot = jnp.zeros(self.fft_shape)
         int_im_tot = jnp.zeros(self.im_shape)
@@ -475,7 +492,6 @@ class PixelRenderer(BaseRenderer):
         )
 
         return self.fft_zeros, self.img_zeros, shifted_psf
-
 
 class FourierRenderer(BaseRenderer):
     """
@@ -830,6 +846,55 @@ def sersic1D(
     )
     return Ie * jnp.exp(-bn * ((r / re) ** (1.0 / n) - 1.0))
 
+def render_spergel_fourier(
+    FX: jax.numpy.array,
+    FY: jax.numpy.array,
+    r_eff: float,
+    flux: float,
+    nu: float,
+    xc: float,
+    yc: float,
+    theta: float,
+    q: float,
+) -> jax.numpy.array:
+    """Render Gaussian components in the Fourier domain
+
+    Parameters
+    ----------
+    FX : jax.numpy.array
+        X frequency positions to evaluate
+    FY : jax.numpy.array
+        Y frequency positions to evaluate
+    amps : jax.numpy.array
+        Amplitudes of each component
+    sigmas : jax.numpy.array
+        widths of each component
+    xc : float
+        Central x position
+    yc : float
+        Central y position
+    theta : float
+        position angle
+    q : float
+        Axis ratio
+
+    Returns
+    -------
+    jax.numpy.array
+        Sum of components evaluated at FX and FY
+    """
+    theta = theta + (jnp.pi / 2.0)
+    Ui = FX * jnp.cos(theta) + FY * jnp.sin(theta)
+    Vi = -1 * FX * jnp.sin(theta) + FY * jnp.cos(theta) 
+    
+
+    in_exp = - 1j * 2 * jnp.pi * FX * xc - 1j * 2 * jnp.pi * FY * yc
+    
+    r_maj = 2*np.pi*r_eff
+    r_min = 2*np.pi*r_eff*q
+    c_nu = c_nu_approx(nu)
+    Fgal = jnp.exp(in_exp)* flux * jnp.power(1. + (r_maj**2 * Ui**2 + r_min**2 * Vi**2)/c_nu**2  , -(1.+nu) )
+    return Fgal
 
 def render_gaussian_fourier(
     FX: jax.numpy.array,
@@ -1019,6 +1084,12 @@ def render_sersic_2d(
     out = amplitude * jnp.exp(-bn * (z ** (1 / n) - 1)) / (1.0 - ellip)
     return out
 
+def c_nu_approx(nu):
+    params = {'a': 0.828382,
+    'b':0.19204739,
+    'd': 1.1182802,
+    'e': 1.4639342}
+    return params['a'] + params['b']*nu + params['d']*jnp.log(params['e']+nu)
 
 def calculate_etas_betas(precision: int) -> Tuple[jax.numpy.array, jax.numpy.array]:
     """Calculate the weights and nodes for the Gaussian decomposition described in Shajib (2019) (https://arxiv.org/abs/1906.08263)
