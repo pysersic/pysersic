@@ -151,6 +151,22 @@ class BaseRenderer(eqx.Module):
         return im
 
     def combine_scene(self, F_im, int_im, obs_im):
+        """Default implementation that naively combines all types of images even if they are known to be zero
+
+        Parameters
+        ----------
+        F_im : Fourier image
+            Sum of sources rendered in Fourier space
+        int_im : _type_
+            Sum of sources rendered in Intrinsic space
+        obs_im : _type_
+            Sum of sources rendered in observed space
+
+        Returns
+        -------
+        Model image
+            Combination of all sources to be compared to observations
+        """
         return self.conv_fft(F_im) + self.conv_img(int_im) + obs_im
 
     @abstractmethod
@@ -445,7 +461,7 @@ class PixelRenderer(BaseRenderer):
             params["ellip"],
             params["theta"],
         )
-        return self.fft_zeros, im_int, self.img_zeros
+        return self.fft_zeros, im_int, 0.
 
     def render_pointsource(self, params: dict) -> jax.numpy.array:
         """Render a Point source by interpolating given PSF into image. Currently jax only supports linear intepolation.
@@ -474,8 +490,26 @@ class PixelRenderer(BaseRenderer):
             mode="constant",
         )
 
-        return self.fft_zeros, self.img_zeros, shifted_psf
+        return self.fft_zeros, 0., shifted_psf
+    
+    def combine_scene(self, F_im, int_im, obs_im):
+        """Combine scene for PixelRenderer when nothing is rendered in Fourier space
 
+        Parameters
+        ----------
+        F_im : Fourier image
+            Sum of sources rendered in Fourier space
+        int_im : _type_
+            Sum of sources rendered in Intrinsic space
+        obs_im : _type_
+            Sum of sources rendered in observed space
+
+        Returns
+        -------
+        Model image
+            Combination of all sources to be compared to observations
+        """
+        return self.conv_img(int_im+self.img_zeros) + obs_im
 
 class FourierRenderer(BaseRenderer):
     """
@@ -612,7 +646,7 @@ class FourierRenderer(BaseRenderer):
             params["ellip"],
             params["theta"],
         )
-        return F_im, self.img_zeros, self.img_zeros
+        return F_im, 0.,0.
 
     def render_pointsource(self, params: dict) -> jax.numpy.array:
         """Render a Point source
@@ -634,8 +668,26 @@ class FourierRenderer(BaseRenderer):
         F_im = render_pointsource_fourier(
             self.FX, self.FY, params["xc"], params["yc"], params["flux"]
         )
-        return F_im, self.img_zeros, self.img_zeros
+        return F_im, 0., 0.
+    
+    def combine_scene(self, F_im, int_im, obs_im):
+        """Combine scene for FourierRenderer where everything is rendered in Fourier space
 
+        Parameters
+        ----------
+        F_im : Fourier image
+            Sum of sources rendered in Fourier space
+        int_im : _type_
+            Sum of sources rendered in Intrinsic space
+        obs_im : _type_
+            Sum of sources rendered in observed space
+
+        Returns
+        -------
+        Model image
+            Combination of all sources to be compared to observations
+        """
+        return self.conv_fft(F_im)
 
 class HybridRenderer(FourierRenderer):
     """
@@ -776,7 +828,7 @@ class HybridRenderer(FourierRenderer):
             params["ellip"],
             params["theta"],
         )
-        return F, self.img_zeros, im
+        return F, 0., im
 
     def render_pointsource(self, params: dict) -> jax.numpy.array:
         """Render a Point source
@@ -798,8 +850,26 @@ class HybridRenderer(FourierRenderer):
         F_im = render_pointsource_fourier(
             self.FX, self.FY, params["xc"], params["yc"], params["flux"]
         )
-        return F_im, self.img_zeros, self.img_zeros
+        return F_im, 0., 0.
 
+    def combine_scene(self, F_im, int_im, obs_im):
+        """Combine scene for FourierRenderer where nothing is rendered in Intrinsic space
+
+        Parameters
+        ----------
+        F_im : Fourier image
+            Sum of sources rendered in Fourier space
+        int_im : _type_
+            Sum of sources rendered in Intrinsic space
+        obs_im : _type_
+            Sum of sources rendered in observed space
+
+        Returns
+        -------
+        Model image
+            Combination of all sources to be compared to observations
+        """
+        return self.conv_fft(F_im) + obs_im
 
 def sersic1D(
     r: Union[float, jax.numpy.array], flux: float, re: float, n: float
