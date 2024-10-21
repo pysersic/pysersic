@@ -1,7 +1,7 @@
 import warnings
 from abc import abstractmethod
 from typing import Iterable, Optional, Tuple, Union
-
+from numpyro import deterministic
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -282,7 +282,7 @@ class BaseRenderer(eqx.Module):
             self.FY,
             params['r_eff'], 
             params['flux'], 
-            params['nu'],
+            params['nu_star'],
             params['xc'],
             params['yc'], 
             params['theta'], 
@@ -851,7 +851,7 @@ def render_spergel_fourier(
     FY: jax.numpy.array,
     r_eff: float,
     flux: float,
-    nu: float,
+    nu_star: float,
     xc: float,
     yc: float,
     theta: float,
@@ -886,7 +886,7 @@ def render_spergel_fourier(
     theta = theta + (jnp.pi / 2.0)
     Ui = FX * jnp.cos(theta) + FY * jnp.sin(theta)
     Vi = -1 * FX * jnp.sin(theta) + FY * jnp.cos(theta) 
-    
+    nu = deterministic('nu', 1./nu_star - 1.)
 
     in_exp = - 1j * 2 * jnp.pi * FX * xc - 1j * 2 * jnp.pi * FY * yc
     
@@ -1085,10 +1085,10 @@ def render_sersic_2d(
     return out
 
 def c_nu_approx(nu):
-    params = {'a': 0.828382,
-    'b':0.19204739,
-    'd': 1.1182802,
-    'e': 1.4639342}
+    params = {'a': 0.80882865,
+    'b': 0.18703458,
+    'd': 1.1386762,
+    'e': 1.4785621}
     return params['a'] + params['b']*nu + params['d']*jnp.log(params['e']+nu)
 
 def calculate_etas_betas(precision: int) -> Tuple[jax.numpy.array, jax.numpy.array]:

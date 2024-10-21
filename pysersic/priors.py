@@ -477,6 +477,8 @@ class BasePrior(eqx.Module):
         PySersicSourcePrior
             Returns self to allow chaining
         """
+        if var_name + self.suffix in self.reparam_dict.keys():
+            self.reparam_dict.pop(var_name + self.suffix)
         self._set_dist(var_name + self.suffix, prior_dist)
         if reparam is not None:
             self.reparam_dict[var_name + self.suffix] = reparam
@@ -997,7 +999,7 @@ class SourceProperties:
                 if profile_type == "sersic_pointsource":
                     prior.set_uniform_prior("f_ps", 0.0, 1.0)
             if profile_type == "spergel":
-                prior.set_custom_prior('nu', dist.TruncatedCauchy(loc = -0.7,scale = 0.25, low = -0.7, high = 4.6))
+                prior.set_uniform_prior('nu_star',0.2,10.)
 
         elif profile_type in ["doublesersic", "sersic_exp"]:
             prior.set_uniform_prior("f_1", 0.0, 1.0)
