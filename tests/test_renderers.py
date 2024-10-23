@@ -78,3 +78,20 @@ def test_exp_dev(prof,pos,re,ellip,theta):
     assert pytest.approx(float(ims[0].sum()), rel = err_tol) == flux_int #pixel
     assert pytest.approx(float(ims[1].sum()), rel = err_tol) == flux_int #fourier
     assert pytest.approx(float(ims[2].sum()), rel = err_tol) == flux_int #hybrid
+
+
+@pytest.mark.parametrize("pos", [(75.,75.),(75.5,75.5),])
+@pytest.mark.parametrize("re", [3.,5.]) 
+@pytest.mark.parametrize("nu_star", [1.,5.]) 
+@pytest.mark.parametrize("ellip", [0,0.5])
+@pytest.mark.parametrize("theta", [0,3.14/4.]) 
+def test_spergel(pos,re,nu_star,ellip,theta):
+    flux = 10
+    params = dict(flux = flux, xc = pos[0], yc = pos[1], nu_star = nu_star, ellip = ellip, theta = theta, r_eff = re )
+    #Calculate fraction of flux contained in image
+
+    
+    ims = get_models(params, 'spergel')
+    assert pytest.approx(float(ims[0].sum()), rel = err_tol) == flux #pixel
+    assert pytest.approx(float(ims[1].sum()), rel = err_tol) == flux #fourier
+    assert pytest.approx(float(ims[2].sum()), rel = err_tol) == flux #hybrid
