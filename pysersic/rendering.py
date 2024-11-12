@@ -1,7 +1,7 @@
 import warnings
 from abc import abstractmethod
 from typing import Iterable, Optional, Tuple, Union
-
+from numpyro import deterministic
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -19,6 +19,7 @@ base_profile_types = [
     "pointsource",
     "exp",
     "dev",
+    "spergel"
 ]
 base_profile_params = dict(
     zip(
@@ -54,6 +55,7 @@ base_profile_params = dict(
             ["xc", "yc", "flux"],
             ["xc", "yc", "flux", "r_eff", "ellip", "theta"],
             ["xc", "yc", "flux", "r_eff", "ellip", "theta"],
+            ["xc", "yc", "flux", "r_eff", "nu", "ellip", "theta"]
         ],
     )
 )
@@ -140,9 +142,9 @@ class BaseRenderer(eqx.Module):
         self.fft_zeros = jnp.zeros(self.fft_shape)
         self.img_zeros = jnp.zeros(self.im_shape)
 
-    def conv_img(self, image):
+    def conv_img_and_fft(self, image,F_im):
         img_fft = jnp.fft.rfft2(image)
-        conv_fft = img_fft * self.PSF_fft
+        conv_fft = (img_fft+F_im) * self.PSF_fft
         conv_im = jnp.fft.irfft2(conv_fft, s=self.im_shape)
         return conv_im
 
@@ -167,7 +169,7 @@ class BaseRenderer(eqx.Module):
         Model image
             Combination of all sources to be compared to observations
         """
-        return self.conv_fft(F_im) + self.conv_img(int_im) + obs_im
+        return self.conv_img_and_fft(int_im,F_im) + obs_im
 
     @abstractmethod
     def render_sersic(self, params: dict):
@@ -289,6 +291,21 @@ class BaseRenderer(eqx.Module):
         to_sersic = dict(params, n=4.0)
         return self.render_sersic(to_sersic)
 
+    def render_spergel(self, params: dict):
+        
+        F_im = render_spergel_fourier(
+            self.FX, 
+            self.FY,
+            params['r_eff'], 
+            params['flux'], 
+            params['nu_star'],
+            params['xc'],
+            params['yc'], 
+            params['theta'], 
+            1. - params['ellip']
+        )
+        return F_im, self.img_zeros, self.img_zeros
+    
     def render_for_model(self, param_dict, types, suffix):
         F_tot = jnp.zeros(self.fft_shape)
         int_im_tot = jnp.zeros(self.im_shape)
@@ -509,7 +526,7 @@ class PixelRenderer(BaseRenderer):
         Model image
             Combination of all sources to be compared to observations
         """
-        return self.conv_img(int_im+self.img_zeros) + obs_im
+        return self.conv_img_and_fft(int_im+self.img_zeros, F_im + self.fft_zeros) + obs_im
 
 class FourierRenderer(BaseRenderer):
     """
@@ -900,6 +917,55 @@ def sersic1D(
     )
     return Ie * jnp.exp(-bn * ((r / re) ** (1.0 / n) - 1.0))
 
+def render_spergel_fourier(
+    FX: jax.numpy.array,
+    FY: jax.numpy.array,
+    r_eff: float,
+    flux: float,
+    nu_star: float,
+    xc: float,
+    yc: float,
+    theta: float,
+    q: float,
+) -> jax.numpy.array:
+    """Render Gaussian components in the Fourier domain
+
+    Parameters
+    ----------
+    FX : jax.numpy.array
+        X frequency positions to evaluate
+    FY : jax.numpy.array
+        Y frequency positions to evaluate
+    amps : jax.numpy.array
+        Amplitudes of each component
+    sigmas : jax.numpy.array
+        widths of each component
+    xc : float
+        Central x position
+    yc : float
+        Central y position
+    theta : float
+        position angle
+    q : float
+        Axis ratio
+
+    Returns
+    -------
+    jax.numpy.array
+        Sum of components evaluated at FX and FY
+    """
+    theta = theta + (jnp.pi / 2.0)
+    Ui = FX * jnp.cos(theta) + FY * jnp.sin(theta)
+    Vi = -1 * FX * jnp.sin(theta) + FY * jnp.cos(theta) 
+    nu = deterministic('nu', 1./nu_star - 1.)
+
+    in_exp = - 1j * 2 * jnp.pi * FX * xc - 1j * 2 * jnp.pi * FY * yc
+    
+    r_maj = 2*np.pi*r_eff
+    r_min = 2*np.pi*r_eff*q
+    c_nu = c_nu_approx(nu)
+    Fgal = jnp.exp(in_exp)* flux * jnp.power(1. + (r_maj**2 * Ui**2 + r_min**2 * Vi**2)/c_nu**2  , -(1.+nu) )
+    return Fgal
 
 def render_gaussian_fourier(
     FX: jax.numpy.array,
@@ -1089,6 +1155,12 @@ def render_sersic_2d(
     out = amplitude * jnp.exp(-bn * (z ** (1 / n) - 1)) / (1.0 - ellip)
     return out
 
+def c_nu_approx(nu):
+    params = {'a': 0.80882865,
+    'b': 0.18703458,
+    'd': 1.1386762,
+    'e': 1.4785621}
+    return params['a'] + params['b']*nu + params['d']*jnp.log(params['e']+nu)
 
 def calculate_etas_betas(precision: int) -> Tuple[jax.numpy.array, jax.numpy.array]:
     """Calculate the weights and nodes for the Gaussian decomposition described in Shajib (2019) (https://arxiv.org/abs/1906.08263)
