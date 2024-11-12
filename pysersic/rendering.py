@@ -142,9 +142,9 @@ class BaseRenderer(eqx.Module):
         self.fft_zeros = jnp.zeros(self.fft_shape)
         self.img_zeros = jnp.zeros(self.im_shape)
 
-    def conv_img(self, image):
+    def conv_img_and_fft(self, image,F_im):
         img_fft = jnp.fft.rfft2(image)
-        conv_fft = img_fft * self.PSF_fft
+        conv_fft = (img_fft+F_im) * self.PSF_fft
         conv_im = jnp.fft.irfft2(conv_fft, s=self.im_shape)
         return conv_im
 
@@ -169,7 +169,7 @@ class BaseRenderer(eqx.Module):
         Model image
             Combination of all sources to be compared to observations
         """
-        return self.conv_fft(F_im) + self.conv_img(int_im) + obs_im
+        return self.conv_img_and_fft(int_im,F_im) + obs_im
 
     @abstractmethod
     def render_sersic(self, params: dict):
@@ -526,7 +526,7 @@ class PixelRenderer(BaseRenderer):
         Model image
             Combination of all sources to be compared to observations
         """
-        return self.conv_img(int_im+self.img_zeros) + obs_im
+        return self.conv_img_and_fft(int_im+self.img_zeros, F_im + self.fft_zeros) + obs_im
 
 class FourierRenderer(BaseRenderer):
     """
