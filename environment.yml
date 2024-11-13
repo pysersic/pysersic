@@ -10,6 +10,7 @@ dependencies:
   - astropy
   - corner
   - jax
+  - jaxopt
   - matplotlib
   - numpy
   - numpyro
