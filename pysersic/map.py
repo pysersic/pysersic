@@ -144,6 +144,7 @@ class FitSingleMAP:
         psf: jnp.array,
         mask: Optional[jnp.array] = None,
         profile_type="sersic",
+        loss_func=None,
     ):
         self.renderer = renderer(
             data.shape,
@@ -153,6 +154,10 @@ class FitSingleMAP:
         self.data = data
         self.sig = sig
         self.mask = self.parse_mask(mask, data)
+        if loss_func is not None:
+            self.loss_func = loss_func
+        else:
+            self.loss_func = self.chi2
 
     @staticmethod
     def parse_mask(mask: Optional[jnp.array], data: jnp.array) -> jnp.array:
@@ -205,7 +210,7 @@ class FitSingleMAP:
                 ]
             ),
         )
-        solver = ScipyBoundedMinimize(fun=jax.jit(self.chi2), method="L-BFGS-B")
+        solver = ScipyBoundedMinimize(fun=jax.jit(self.loss_func), method="L-BFGS-B")
         result = solver.run(params_init, bounds=bounds)
         return result.params
 
