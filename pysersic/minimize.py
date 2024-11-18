@@ -10,10 +10,13 @@ from .priors import SourceProperties
 
 
 class FastRenderer:
-    def __init__(self, im_shape: Iterable, pixel_PSF: jnp.array, profile_type: str):
+    def __init__(
+        self,
+        im_shape: Iterable,
+        pixel_PSF: jnp.array,
+    ):
         self.im_shape = im_shape
         self.pixel_PSF = pixel_PSF
-        self.profile_type = profile_type
 
         if not jnp.isclose(jnp.sum(self.pixel_PSF), 1.0, 0.1):
             warnings.warn(
@@ -59,41 +62,43 @@ class FastRenderer:
         self.img_zeros = jnp.zeros(self.im_shape)
 
         # Compile the rendering functions
-        self._compile_renderer()
+        # self._compile_renderer()
 
-    def _compile_renderer(self):
-        self.render_source = jax.jit(self._render_source)
+    # def _compile_renderer(self):
+    #     self.render_source = jax.jit(self._render_source)
 
-    def _render_source(self, params):
-        if self.profile_type == "sersic":
-            return self._render_sersic(params)
-        elif self.profile_type == "pointsource":
-            return self._render_pointsource(params)
-        else:
-            raise ValueError(f"Unsupported profile type: {self.profile_type}")
+    def render_source(self, params, profile_type):
+        F, im, z = getattr(self, f"_render_{profile_type}")(params)
+        model = self.combine_scene(F, im, z)
+        return model
 
     def _render_sersic(self, params):
-        xc, yc, flux, r_eff, e1, e2, n = params
-        r_eff, ellip, phi = self.convert_params(r_eff, e1, e2)
-        bn = 1.9992 * n - 0.3271
-        a, b = r_eff, (1 - ellip) * r_eff
-        phi = phi + (jnp.pi / 2.0)  # This is the theta derived from e1, e2
-        cos_phi, sin_phi = jnp.cos(phi), jnp.sin(phi)
-        x_maj = (self.X - xc) * cos_phi + (self.Y - yc) * sin_phi
-        x_min = -(self.X - xc) * sin_phi + (self.Y - yc) * cos_phi
+        # xc, yc, flux, r_eff, e1, e2, n = params
+        bn = 1.9992 * params["n"] - 0.3271
+        a, b = params["r_eff"], (1 - params["ellip"]) * params["r_eff"]
+        theta = params["theta"] + (
+            jnp.pi / 2.0
+        )  # This is the theta derived from e1, e2
+        cos_phi, sin_phi = jnp.cos(theta), jnp.sin(theta)
+        x_maj = (self.X - params["xc"]) * cos_phi + (self.Y - params["yc"]) * sin_phi
+        x_min = -(self.X - params["xc"]) * sin_phi + (self.Y - params["yc"]) * cos_phi
         amplitude = (
-            flux
-            * bn ** (2 * n)
+            params["flux"]
+            * bn ** (2 * params["n"])
             / (
-                jnp.exp(bn + jax.scipy.special.gammaln(2 * n))
-                * r_eff**2
+                jnp.exp(bn + jax.scipy.special.gammaln(2 * params["n"]))
+                * params["r_eff"] ** 2
                 * jnp.pi
                 * 2
-                * n
+                * params["n"]
             )
         )
         z = jnp.sqrt((x_maj / a) ** 2 + (x_min / b) ** 2)
-        im_int = amplitude * jnp.exp(-bn * (z ** (1 / n) - 1)) / (1.0 - ellip)
+        im_int = (
+            amplitude
+            * jnp.exp(-bn * (z ** (1 / params["n"]) - 1))
+            / (1.0 - params["ellip"])
+        )
         return self.fft_zeros, im_int, self.img_zeros
 
     def _render_pointsource(self, params):
@@ -109,7 +114,8 @@ class FastRenderer:
         return self.fft_zeros, self.img_zeros, shifted_psf
 
     def render(self, params):
-        return self.render_source(params)
+        F, im, z = self._render_source(params)
+        return self.combine_scene(F, im, z)
 
     def conv_img(self, image):
         img_fft = jnp.fft.rfft2(image)
@@ -135,21 +141,20 @@ class FastRenderer:
         return rout, ellip, phi
 
 
-class FitSingleMAP:
+class FitSingleLoss:
     def __init__(
         self,
-        renderer: FastRenderer,
+        renderer,
         data: jnp.array,
         sig: jnp.array,
         psf: jnp.array,
         mask: Optional[jnp.array] = None,
-        profile_type="sersic",
         loss_func=None,
+        profile_type="sersic",
     ):
         self.renderer = renderer(
             data.shape,
             pixel_PSF=jnp.array(psf).astype(float),
-            profile_type=profile_type,
         )
         self.data = data
         self.sig = sig
@@ -158,6 +163,7 @@ class FitSingleMAP:
             self.loss_func = loss_func
         else:
             self.loss_func = self.chi2
+        self.profile_type = profile_type
 
     @staticmethod
     def parse_mask(mask: Optional[jnp.array], data: jnp.array) -> jnp.array:
@@ -166,16 +172,26 @@ class FitSingleMAP:
         else:
             return jnp.logical_not(jnp.array(mask).astype(jnp.bool_))
 
-    def chi2(self, params) -> float:
-        F, int_im, obs_im = self.renderer.render(params)
-        model = self.renderer.combine_scene(F, int_im, obs_im)
+    def calc_loss(self, params):
+        params = dict(
+            xc=params[0],
+            yc=params[1],
+            flux=params[2],
+            r_eff=params[3],
+            e1=params[4],
+            e2=params[5],
+            n=params[6],
+        )
+        model = self.create_model(params)
+        return self.loss_func(self.data, model, self.sig, self.mask)
 
+    def chi2(self, data, model, sig, mask) -> float:
         # Apply the mask to both the data and model
-        masked_residuals = ((self.data - model) * self.mask) / self.sig
+        masked_residuals = ((data - model) * mask) / sig
         chi2_val = jnp.sum(masked_residuals**2)
         return chi2_val
 
-    def fit(self) -> jnp.array:
+    def minimize_loss(self) -> jnp.array:
         sp = SourceProperties(self.data, mask=jnp.logical_not(self.mask).astype(float))
         xc = sp.xc_guess
         yc = sp.yc_guess
@@ -210,11 +226,42 @@ class FitSingleMAP:
                 ]
             ),
         )
-        solver = ScipyBoundedMinimize(fun=jax.jit(self.loss_func), method="L-BFGS-B")
+        solver = ScipyBoundedMinimize(fun=jax.jit(self.calc_loss), method="L-BFGS-B")
         result = solver.run(params_init, bounds=bounds)
-        return result.params
+        out_dict = dict(
+            xc=result.params[0],
+            yc=result.params[1],
+            flux=result.params[2],
+            r_eff=result.params[3],
+            e1=result.params[4],
+            e2=result.params[5],
+            n=result.params[6],
+        )
+        return out_dict, result
 
-    def create_model(self, params: jnp.array) -> jnp.array:
-        F, int_im, obs_im = self.renderer.render(params)
-        model = self.renderer.combine_scene(F, int_im, obs_im)
+    def create_model(self, params: dict) -> jnp.array:
+        r_eff, ellip, theta = self.convert_params(
+            params["r_eff"], params["e1"], params["e2"]
+        )
+        params = dict(
+            xc=params["xc"],
+            yc=params["yc"],
+            flux=params["flux"],
+            r_eff=r_eff,
+            n=params["n"],
+            ellip=ellip,
+            theta=theta,
+        )
+        model = self.renderer.render_source(params, profile_type=self.profile_type)
+
         return model
+
+    @staticmethod
+    def convert_params(r, e1, e2):
+        rout = jnp.exp(r)
+        epnorm = jnp.hypot(e1, e2)
+        enorm = 2 / jnp.pi * jnp.arctan(epnorm)
+        phi = 0.5 * jnp.arctan2(e1, e2)
+        ba = (1 - enorm) / (1 + enorm)
+        ellip = jnp.sqrt(1 - ba**2)
+        return rout, ellip, phi
