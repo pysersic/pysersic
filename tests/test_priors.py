@@ -1,4 +1,3 @@
-# Something in the jax RNG has changed when I upgraded to jax v0.5.0 so I will ignore these tests for now and see if it is stable
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -89,11 +88,10 @@ def test_PySersicSourcePrior():
     prior.set_uniform_prior("flux", 0, 100)
     with seed(rng_seed=1):
         params = prior()
-    print (params)
-
-    assert params["xc"] == pytest.approx(9.75608, rel=1e-5)
-    assert params["yc"] == pytest.approx(10.9477, rel=1e-5)
+    assert params["xc"] == pytest.approx(9.7560796737, rel=1e-5)
+    assert params["yc"] == pytest.approx(9.7560796737, rel=1e-5)
     assert params["flux"] == pytest.approx(37.12473, rel=1e-5)
+
 
 def test_PySersicMultiPrior():
     catalog = {}
@@ -106,10 +104,10 @@ def test_PySersicMultiPrior():
     mp = PySersicMultiPrior(catalog)
     with seed(rng_seed=1):
         params = mp()
-    print (params)
-    assert params["flux_0"] == pytest.approx(95.1216, abs=1e-4)
-    assert params["xc_0"] == pytest.approx(10.9477, abs=1e-4)
-    assert params["yc_0"] == pytest.approx(20.10954, abs=1e-4)
+
+    assert params["flux_0"] == pytest.approx(95.121597, abs=1e-4)
+    assert params["xc_0"] == pytest.approx(8.90784, abs=1e-4)
+    assert params["yc_0"] == pytest.approx(19.67145, abs=1e-4)
     assert params["flux_1"] == pytest.approx(113.12357, abs=1e-4)
     assert params["xc_1"] == pytest.approx(13.87507, abs=1e-4)
     assert params["yc_1"] == pytest.approx(16.05198, abs=1e-4)
