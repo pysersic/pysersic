@@ -67,14 +67,24 @@ class BaseFitter(ABC):
 
         self.data = jnp.array(data.astype(np.float32))
         self.rms = jnp.array(rms.astype(np.float32))
-        self.psf = jnp.array(psf.astype(np.float32))
         self.mask = parse_mask(mask, self.data)
+        self.rms, self.mask = self.clean_rms_array(self.rms, self.mask)
+        self.psf = jnp.array(psf.astype(np.float32))
         data_isgood = check_input_data(
             self.data, rms=self.rms, psf=self.psf, mask=jnp.logical_not(self.mask)
         )
         self.renderer = renderer(data.shape, self.psf, **renderer_kwargs)
         self.prior = None
         self.prior_dict = {}
+
+    def clean_rms_array(self, rms, mask):
+        bad_pixels = jnp.isnan(rms) | jnp.isinf(rms) | (rms <= 0)
+
+        rms_clean = jnp.nan_to_num(rms, nan=1e3, posinf=1e3, neginf=1e3)
+        rms_clean = jnp.where(rms_clean <= 0, 1e-3, rms_clean)
+        updated_mask = mask & (~bad_pixels)
+
+        return rms_clean, updated_mask
 
     def set_loss_func(self, loss_func: Callable) -> None:
         """Set loss function to be used for inference
@@ -110,7 +120,7 @@ class BaseFitter(ABC):
         sampler_kwargs: Optional[dict] = {},
         mcmc_kwargs: Optional[dict] = {},
         return_model: Optional[bool] = True,
-        reparam_func: Optional[Union[Callable,str]] = identity,
+        reparam_func: Optional[Union[Callable, str]] = identity,
     ) -> pandas.DataFrame:
         """Perform inference using a NUTS sampler
 
@@ -141,13 +151,17 @@ class BaseFitter(ABC):
 
         model = self.build_model(return_model=return_model)
         if type(reparam_func) == (str):
-            print (f'Running svi model for reparam: {reparam_func}')
-            svi_res_cur =  self.estimate_posterior(rkey = split(rkey)[0],method = reparam_func, return_model = False)
-            neutra = infer.reparam.NeuTraReparam(svi_res_cur.input['guide'], svi_res_cur.input['svi_result'].params)
+            print(f"Running svi model for reparam: {reparam_func}")
+            svi_res_cur = self.estimate_posterior(
+                rkey=split(rkey)[0], method=reparam_func, return_model=False
+            )
+            neutra = infer.reparam.NeuTraReparam(
+                svi_res_cur.input["guide"], svi_res_cur.input["svi_result"].params
+            )
             reparam_func_use = neutra.reparam
         else:
             reparam_func_use = reparam_func
-        
+
         model = reparam_func_use(model)
         sampler = infer.MCMC(
             infer.NUTS(model, init_strategy=init_strategy, **sampler_kwargs),
@@ -711,7 +725,7 @@ def check_input_data(
     psf = jnp.array(psf)
     if data.shape != rms.shape:
         raise ShapeMatchError("RMS map ndims must match input data ndims.")
-    if len(rms.flatten()[rms.flatten()<0]) > 0: 
+    if len(rms.flatten()[rms.flatten() < 0]) > 0:
         raise ValueError("RMS/Uncertainty image cannot contain negative values.")
     if jnp.median(rms) > 5 * jnp.std(data):
         warnings.warn(
@@ -731,6 +745,11 @@ def check_input_data(
             )
         if mask.shape != data.shape:
             raise ShapeMatchError("Mask ndims must match input data ndims.")
+    bad_pixels = jnp.isnan(rms) | jnp.isinf(rms) | (rms <= 0)
+    if jnp.any(bad_pixels):
+        warnings.warn(
+            "There are invalid pixel values in rms (nan/infs); these will be masked automaticaly (if they are not already)."
+        )
     return True
 
 
