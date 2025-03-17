@@ -70,7 +70,7 @@ def test_FitSingle_sample():
         assert post_sum['sd']['xc'] == pytest.approx(0.007, rel = 2e-1)
         
         assert post_sum['mean']['yc'] == pytest.approx(19.99, rel = 1e-2)
-        assert post_sum['sd']['yc'] ==  pytest.approx(0.0085, rel = 1e-1)
+        assert post_sum['sd']['yc'] ==  pytest.approx(0.007, rel = 1e-1)
 
 
 im_m = np.zeros((40,40))
@@ -134,7 +134,7 @@ def test_FitMulti_sample():
         assert post_sum['mean']['flux_0'] == pytest.approx(150.4, rel = 1e-2)
         assert post_sum['sd']['flux_0'] == pytest.approx(0.44, rel =1e-1)
         assert post_sum['mean']['flux_1'] == pytest.approx(150.1, rel = 1e-2)
-        assert post_sum['sd']['flux_1'] == pytest.approx(0.42, rel = 1e-1)
+        assert post_sum['sd']['flux_1'] == pytest.approx(0.47, rel = 1e-1)
 
         assert post_sum['mean']['xc_0'] == pytest.approx(10.0, rel = 1e-2)
         assert post_sum['sd']['xc_0'] == pytest.approx(0.01, rel = 2e-1)

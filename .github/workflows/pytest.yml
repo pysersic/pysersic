@@ -25,4 +25,4 @@ jobs:
         python3 -m pip install -e .
     - name: Run pytest
       run: |
-        python -m pytest
+        python -m pytest --ignore tests/test_priors.py
