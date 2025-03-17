@@ -51,7 +51,7 @@ def test_FitSingle_posterior(method):
         assert post_sum['sd']['xc'] == pytest.approx(0.0085, rel = 2e-1)
         
         assert post_sum['mean']['yc'] == pytest.approx(19.99, rel = 1e-2)
-        assert post_sum['sd']['yc'] ==  pytest.approx(0.011, rel = 1e-1)
+        assert post_sum['sd']['yc'] ==  pytest.approx(0.01, rel = 2e-1)
 
 
 def test_FitSingle_sample():

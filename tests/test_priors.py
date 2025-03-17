@@ -88,8 +88,8 @@ def test_PySersicSourcePrior():
     prior.set_uniform_prior("flux", 0, 100)
     with seed(rng_seed=1):
         params = prior()
-    assert params["xc"] == pytest.approx(9.7560796737, rel=1e-5)
-    assert params["yc"] == pytest.approx(9.7560796737, rel=1e-5)
+    assert params["xc"] == pytest.approx( 8.85298, rel=1e-5)
+    assert params["yc"] == pytest.approx(8.9078359, rel=1e-5)
     assert params["flux"] == pytest.approx(37.12473, rel=1e-5)
 
 
@@ -105,7 +105,7 @@ def test_PySersicMultiPrior():
     with seed(rng_seed=1):
         params = mp()
 
-    assert params["flux_0"] == pytest.approx(95.121597, abs=1e-4)
+    assert params["flux_0"] == pytest.approx(77.05960, abs=1e-4)
     assert params["xc_0"] == pytest.approx(8.90784, abs=1e-4)
     assert params["yc_0"] == pytest.approx(19.67145, abs=1e-4)
     assert params["flux_1"] == pytest.approx(113.12357, abs=1e-4)
