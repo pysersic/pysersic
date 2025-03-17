@@ -1,6 +1,6 @@
 import warnings
 from abc import abstractmethod
-from typing import Iterable, Optional, Tuple, Union
+from typing import Iterable, Optional, Tuple, Union,Literal
 from numpyro import deterministic
 import equinox as eqx
 import jax
@@ -528,6 +528,12 @@ class PixelRenderer(BaseRenderer):
         """
         return self.conv_img_and_fft(int_im+self.img_zeros, F_im + self.fft_zeros) + obs_im
 
+def sersic_hankel_emul_func(nu_in,n):
+    c = [-1.6021528 ,  0.33155227,  0.2694067 ,  0.73505086]
+    nu =  nu_in + 1e-8
+    numerator = c[0]*jnp.log(nu) + c[1]/nu + c[2]
+    return jnp.square( jax.nn.sigmoid(numerator/ jnp.sqrt(n) + c[3]) )
+
 class FourierRenderer(BaseRenderer):
     """
     Class to render sources based on rendering them in Fourier space. Sersic profiles are modeled as a series of Gaussian following Shajib (2019) (https://arxiv.org/abs/1906.08263) and the implementation in lenstronomy (https://github.com/lenstronomy/lenstronomy/blob/main/lenstronomy/LensModel/Profiles/gauss_decomposition.py)
@@ -538,7 +544,8 @@ class FourierRenderer(BaseRenderer):
     n_sigma: int = eqx.field(static=True)
     precision: int = eqx.field(static=True)
     use_interp_amps: bool = eqx.field(static=True)
-
+    render_mode: str = eqx.field(static=True)
+    emul_func: callable = eqx.field(static=True)
     etas: jax.numpy.array
     betas: jax.numpy.array
     n_ax: jax.numpy.array
@@ -548,11 +555,13 @@ class FourierRenderer(BaseRenderer):
         self,
         im_shape: Iterable,
         pixel_PSF: jax.numpy.array,
+        render_mode: Optional[Literal["MGE","emul"]] = 'emul',
         frac_start: Optional[float] = 1e-2,
         frac_end: Optional[float] = 15.0,
         n_sigma: Optional[int] = 15,
         precision: Optional[int] = 10,
         use_interp_amps: Optional[bool] = True,
+        emul_func: Optional[callable] = sersic_hankel_emul_func,
     ) -> None:
         """Initialize a Fourier renderer class
 
@@ -574,31 +583,47 @@ class FourierRenderer(BaseRenderer):
             If True, instead of performing the direct calculation in Shajib (2019) at each iteration, a polynomial approximation is fit and used. The amplitudes of each gaussian component amplitudes as a function of Sersic index are interpolated based on a computed grid. This is much more numerically stable owing to the smooth gradients. If this matters for you then set this to False and make sure to enable jax's 64 bit capabilities which we find helps the stability.
         """
         super().__init__(im_shape, pixel_PSF)
-        self.frac_start = frac_start
-        self.frac_end = frac_end
-        self.n_sigma = n_sigma
-        self.precision = precision
-        self.use_interp_amps = use_interp_amps
-        self.etas, self.betas = calculate_etas_betas(self.precision)
-        if not use_interp_amps and not jax.config.x64_enabled:
-            warnings.warn(
-                "!! WARNING !! - Gaussian decomposition can be numerically unstable when using jax's default 32 bit. Please either enable jax 64 bit or set 'use_poly_amps' = True in the renderer kwargs"
-            )
+        self.render_mode = render_mode
+        assert self.render_mode in ['MGE','emul'], "Must pick on of 'MGE' or 'emul', for render mode, please see documentation for more discussion"
+        if self.render_mode == 'MGE':
+            self.frac_start = frac_start
+            self.frac_end = frac_end
+            self.n_sigma = n_sigma
+            self.precision = precision
+            self.use_interp_amps = use_interp_amps
+            self.etas, self.betas = calculate_etas_betas(self.precision)
+            if not use_interp_amps and not jax.config.x64_enabled:
+                warnings.warn(
+                    "!! WARNING !! - Gaussian decomposition can be numerically unstable when using jax's default 32 bit. Please either enable jax 64 bit or set 'use_interp_amps' = True in the renderer kwargs"
+                )
 
-        # Fit polynomial for smooth interpolation
-        self.n_ax = jnp.linspace(0.65, 8.0, num=50)
-        self.amps_n_ax = jax.vmap(
-            lambda n: sersic_gauss_decomp(
-                1.0,
-                1.0,
-                n,
-                self.etas,
-                self.betas,
-                self.frac_start,
-                self.frac_end,
-                self.n_sigma,
-            )[0]
-        )(self.n_ax)
+            # Fit polynomial for smooth interpolation
+            self.n_ax = jnp.linspace(0.65, 8.0, num=50)
+            self.amps_n_ax = jax.vmap(
+                lambda n: sersic_gauss_decomp(
+                    1.0,
+                    1.0,
+                    n,
+                    self.etas,
+                    self.betas,
+                    self.frac_start,
+                    self.frac_end,
+                    self.n_sigma,
+                )[0]
+            )(self.n_ax)
+            self.emul_func = emul_func  
+        elif self.render_mode == 'emul':
+            self.emul_func = emul_func
+            # Set up dumby variables
+            self.frac_start = frac_start
+            self.frac_end = frac_end
+            self.n_sigma = n_sigma
+            self.precision = precision
+            self.use_interp_amps = use_interp_amps
+            self.etas, self.betas = jnp.ones(3),jnp.ones(3)
+            # Fit polynomial for smooth interpolation
+            self.n_ax = jnp.ones(3)
+            self.amps_n_ax = jnp.ones(3)
 
     def get_amps_sigmas(self, flux, r_eff, n):
         if self.use_interp_amps:
@@ -628,6 +653,19 @@ class FourierRenderer(BaseRenderer):
         q = 1.0 - ellip
         Fgal = render_gaussian_fourier(self.FX, self.FY, amps, sigmas, xc, yc, theta, q)
         return Fgal
+    
+    def render_sersic_emul_fourier(self, xc, yc, flux, r_eff, n, ellip, theta):
+        theta = theta + (jnp.pi / 2.0)
+        Ui = self.FX * jnp.cos(theta) + self.FY* jnp.sin(theta)
+        Vi = -1 * self.FX * jnp.sin(theta) + self.FY * jnp.cos(theta)
+
+        nu_tilde = jnp.hypot(Ui, Vi*(1.-ellip) ) * r_eff*2*np.pi
+        Fgal = self.emul_func(nu_tilde, n)
+        in_exp = (
+            - 1j * 2 * jnp.pi * self.FX * xc
+            - 1j * 2 * jnp.pi * self.FY * yc
+        )
+        return Fgal * jnp.exp(in_exp) * flux
 
     def render_sersic(self, params: dict) -> jax.numpy.array:
         """Render a Sersic profile
@@ -654,15 +692,26 @@ class FourierRenderer(BaseRenderer):
         jax.numpy.array
             Rendered Sersic model
         """
-        F_im = self.render_sersic_mog_fourier(
-            params["xc"],
-            params["yc"],
-            params["flux"],
-            params["r_eff"],
-            params["n"],
-            params["ellip"],
-            params["theta"],
-        )
+        if self.render_mode == 'MGE':
+            F_im = self.render_sersic_mog_fourier(
+                params["xc"],
+                params["yc"],
+                params["flux"],
+                params["r_eff"],
+                params["n"],
+                params["ellip"],
+                params["theta"],
+            )
+        elif self.render_mode == 'emul':
+            F_im = self.render_sersic_emul_fourier(
+                params["xc"],
+                params["yc"],
+                params["flux"],
+                params["r_eff"],
+                params["n"],
+                params["ellip"],
+                params["theta"],
+            )
         return F_im, 0.,0.
 
     def render_pointsource(self, params: dict) -> jax.numpy.array:
@@ -753,6 +802,7 @@ class HybridRenderer(FourierRenderer):
         super().__init__(
             im_shape,
             pixel_PSF,
+            'MGE',
             frac_start,
             frac_end,
             n_sigma,
@@ -1251,3 +1301,54 @@ def sersic_gauss_decomp(
     amps = amps * 2 * jnp.pi * sigmas * sigmas
 
     return amps, sigmas
+
+def sersic_hankel_emul_func(nu_in,n):
+    c = [-1.6021528 ,  0.33155227,  0.2694067 ,  0.73505086]
+    nu =  nu_in + 1e-8
+    numerator = c[0]*jnp.log(nu) + c[1]/nu + c[2]
+    return jnp.square( jax.nn.sigmoid(numerator/ jnp.sqrt(n) + c[3]) )
+
+def sersic_hankel_emul_func_small3(nu_in,n):
+    c = [ 5.7471825e+01,  7.6067686e-01,  4.6424842e+00, -2.5012026e+00, 2.2685257e+01, -4.4680133e-02,  3.2311674e-02]
+    nu =  nu_in + 1e-8
+    term_1 =  c[0]* jax.nn.sigmoid(jnp.square(nu)/n *c[1] + c[2]) 
+    term_2 = c[3]*(jnp.log(nu) + c[4]) 
+    return jax.nn.sigmoid((term_1 + term_2)/ jnp.sqrt(n + c[5]) + c[6])
+
+def sersic_hankel_emul_func_small3(nu_in,n):
+    c = [ 1.5385696 , -0.49824592, -1.08675   ,  0.18938981,  0.1381604 , 0.6424643 ,  1.2805656 ,  0.16383505]
+    nu =  nu_in + 1e-8
+    term_1 = c[0]*jnp.sqrt(nu)/ ( c[5]*nu + c[6]*n + c[1]*jnp.log(nu/jnp.sqrt(n)) )
+    term_2 = c[2] *(jnp.log(nu)+c[7]) / jnp.sqrt(c[3] *n ) 
+    return jax.nn.sigmoid(term_1 + term_2 + c[4])
+
+
+def sersic_hankel_emul_func_small2(nu_in,n):
+    c = [0.7531736 ,  0.5581475 , -1.0057453 ,  0.17559987,  0.02858028]
+    nu =  nu_in + 1e-8
+    term_1 = c[0]*jnp.sqrt(nu)/ ( n + c[1]*jax.nn.sigmoid(n)*nu )
+    term_2 = c[2] *jnp.log(nu) / jnp.sqrt(c[3] *n) 
+    return jax.nn.sigmoid(term_1 + term_2 + c[4])
+
+
+def sersic_hankel_emul_func_test_2(nu,n):
+    c = [-2.5614061 ,  0.75701123,  0.28802106,  0.5368174 , -0.1111848 ]
+    to_sig = c[0]*(jnp.log(  c[1]*(nu + 4e-11)) ) / (c[2]+n)**c[3]  + c[4]
+    return jax.nn.sigmoid(to_sig)
+
+def sersic_hankel_emul_func_big_fail(nu,n):
+    c1,c2,c3,c4,c5,c6,c7,c8,c9 = [-0.05245596,  0.41964766,  0.23960158,  0.48784706, -3.2190711 ,-1.0500329 ,  0.55887544,  0.37940663,  0.5099128]
+    denom_1 = jnp.sqrt(n*(nu+c1) + c2) + jax.nn.sigmoid(c3*( n + nu - (nu+c4)/n**4) )
+    term_1 = c5*(nu+c6)/denom_1
+    term_2 = c7*jax.nn.sigmoid(c8*nu/(n+c9))
+    return jax.nn.sigmoid( term_1 + term_2 )
+
+def sersic_hankel_emul_func_simple_with_powers(nu,n):
+    #Seems to be pretty slow
+    c1,c2,c3,c4,c5 = [7.0684724e-02, -2.4524992e+00, -1.4031557e+00,  3.2901505e-07,4.0687695e-01 ]
+    alpha1,alpha2 = [0.61915827, 1.2112169 ]
+    return jax.nn.sigmoid( c1 + c2* (nu + c3 )/ ( (n*nu + c4)**alpha1 + c5 ) ) **alpha2
+
+def sersic_hankel_emul_func_simple(nu,n):
+    c1,c2,c3,c4,c5,c6 = [-0.18926676, -1.6521136 , -1.3889627 ,  1.0237495 , -0.56654733, 1.083252  ]
+    return jax.nn.sigmoid( c1 + c2* (nu + c3 )/ ( jnp.sqrt(nu*n**c6 + c4) + c5 ) ) 
