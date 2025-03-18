@@ -888,6 +888,54 @@ class HybridRenderer(FourierRenderer):
         """
         return self.conv_fft(F_im) + obs_im
 
+class OverSampPSFFourierRenderer(FourierRenderer):
+    OS_factor: int = eqx.field(static=True)
+    original_im_shape: tuple = eqx.field(static=True)
+
+    def __init__(
+        self,
+        im_shape: Iterable,
+        pixel_PSF: jax.numpy.array,
+        frac_start: Optional[float] = 1e-2,
+        frac_end: Optional[float] = 15.0,
+        n_sigma: Optional[int] = 15,
+        precision: Optional[int] = 10,
+        use_interp_amps: Optional[bool] = True,
+        OS_factor: Optional[int] = 1
+    ) -> None:
+        #Trick FourierRenderer into thinking the image is bigger
+        super().__init__(im_shape = (im_shape[0]*OS_factor, im_shape[1]*OS_factor), pixel_PSF = pixel_PSF, frac_start = frac_start, frac_end = frac_end, n_sigma = n_sigma, precision = precision, use_interp_amps =use_interp_amps)
+        self.original_im_shape = im_shape
+        self.OS_factor = OS_factor
+
+        #Account for different pixel scale
+        self.FX = self.FX*self.OS_factor
+        self.FY = self.FY*self.OS_factor
+
+    def combine_scene(self, F_im, int_im, obs_im):
+        """Combine scene for OverSampPSFFourierRendererwhere everything is rendered in Fourier space and then block combined down to the original pixel scale
+
+        Parameters
+        ----------
+        F_im : Fourier image
+            Sum of sources rendered in Fourier space
+        int_im : _type_
+            Sum of sources rendered in Intrinsic space
+        obs_im : _type_
+            Sum of sources rendered in observed space
+
+        Returns
+        -------
+        Model image
+            Combination of all sources to be compared to observations
+        """
+        over_sampled_im = self.conv_fft(F_im)
+
+        #Block combine oversampled image to orignal pixel scale
+        obs_block_im = over_sampled_im.reshape( (self.original_im_shape[0], self.OS_factor, self.original_im_shape[1], self.OS_factor) )
+        return obs_block_im.sum(axis = (1,3))
+
+
 def sersic1D(
     r: Union[float, jax.numpy.array], flux: float, re: float, n: float
 ) -> Union[float, jax.numpy.array]:
