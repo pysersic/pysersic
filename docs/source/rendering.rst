@@ -17,6 +17,8 @@ There are two optional arguments:
 
 * ``num_os`` - Number of sub-pixels in each direction to oversample by.
 
+Note that ``Pysersic`` uses an approximation to the effective radius normalizing term :math:`b_n` which is valid for all values of n between 0.1 and 10, unlike standard approximations which diverge below :math:`n<0.5` or so. 
+
 ``FourierRenderer`` and ``HybridRenderer``
 -------------------------------------------
 
@@ -37,3 +39,6 @@ Both ``FourierRenderer`` and ``HybridRenderer`` use this Gaussian decomposition 
 ``FourierRenderer``, as the name implies, renders sources solely in Fourier space. However this can lead to some artifacts, specifically, aliasing if the source is near the edge. This is because the inverse FFT assumes the image is periodic so part of the source that should lie outside the image appears opposite. To help combat this we also implement a version of the hybrid real-Fourier algorithm described in `Lang (2020) <https://arxiv.org/abs/2012.15797>`_ in ``HybridRenderer``. The innovation is to render some of the largest Gaussian components in real space to help avoid the aliasing while maintaining the benefits of rendering in Fourier space. This has one additional argument beyond those described above:
 
 * ``num_pixel_render`` - Number of Gaussian components to render in real space, beginning with the largest and counting backwards.
+
+
+As a note, due to the nature of the Fourier/Hybrid methods, they do not support sampling to Sérsic indices below 0.65, and setting a lower prior will not change the results. If you have sources that require lower than 0.65 for the index, use the ``PixelRenderer``, as it can safely render down to n of 0.1. 
