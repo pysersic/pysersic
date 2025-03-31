@@ -66,18 +66,17 @@ class BaseRenderer(eqx.Module):
     im_shape: tuple = eqx.field(static=True)
     psf_shape: tuple = eqx.field(static=True)
     fft_shape: tuple = eqx.field(static=True)
-    profile_func_dict: dict = eqx.field(static=True)
 
-    pixel_PSF: jax.numpy.array
-    PSF_fft: jax.numpy.array
-    X: jax.numpy.array
-    Y: jax.numpy.array
-    FX: jax.numpy.array
-    FY: jax.numpy.array
+    pixel_PSF: jax.numpy.array = eqx.field(static=False)
+    PSF_fft: jax.numpy.array = eqx.field(static=False)
+    X: jax.numpy.array = eqx.field(static=False)
+    Y: jax.numpy.array = eqx.field(static=False)
+    FX: jax.numpy.array = eqx.field(static=False)
+    FY: jax.numpy.array = eqx.field(static=False)
     x_mid: float
     y_mid: float
-    fft_zeros: jnp.array
-    img_zeros: jnp.array
+    fft_zeros: jnp.array = eqx.field(static=False)
+    img_zeros: jnp.array = eqx.field(static=False)
 
     def __init__(self, im_shape: Iterable, pixel_PSF: jax.numpy.array) -> None:
         """Base class for different Renderers
@@ -89,13 +88,13 @@ class BaseRenderer(eqx.Module):
         pixel_PSF : jax.numpy.array
             Pixelized version of the PSF
         """
-        self.im_shape = im_shape
+        self.im_shape = tuple(int(x) for x in im_shape)
         self.pixel_PSF = pixel_PSF
         if not jnp.isclose(jnp.sum(self.pixel_PSF), 1.0, 0.1):
             warnings.warn(
                 "PSF does not appear to be appropriately normalized; Sum(psf) is more than 0.1 away from 1."
             )
-        self.psf_shape = jnp.shape(self.pixel_PSF)
+        self.psf_shape = tuple(int(x) for x in jnp.shape(self.pixel_PSF))
         if jnp.any(self.im_shape < self.psf_shape):
             raise KernelError(
                 "PSF pixel image size must be smaller than science image."
@@ -110,7 +109,7 @@ class BaseRenderer(eqx.Module):
         f1d1 = jnp.fft.rfftfreq(self.im_shape[0])
         f1d2 = jnp.fft.fftfreq(self.im_shape[1])
         self.FX, self.FY = jnp.meshgrid(f1d1, f1d2)
-        self.fft_shape = self.FX.shape
+        self.fft_shape = tuple(int(x) for x in self.FX.shape)
         fft_shift_arr_x = jnp.exp(
             jax.lax.complex(0.0, -1.0)
             * 2.0
@@ -133,12 +132,14 @@ class BaseRenderer(eqx.Module):
             * fft_shift_arr_y
         )
 
-        # All the  renderers here these profile types
-        self.profile_func_dict = {}
-        for profile_type in base_profile_types:
-            self.profile_func_dict[profile_type] = getattr(
-                self, f"render_{profile_type}"
-            )
+        object.__setattr__(
+            self,
+            "profile_func_dict",
+            {
+                profile_type: getattr(self, f"render_{profile_type}")
+                for profile_type in base_profile_types
+            },
+        )
 
         self.fft_zeros = jnp.zeros(self.fft_shape)
         self.img_zeros = jnp.zeros(self.im_shape)
@@ -353,14 +354,14 @@ class PixelRenderer(BaseRenderer):
     os_pixel_size: int = eqx.field(static=True)
     num_os: int = eqx.field(static=True)
 
-    w_os: jnp.array
+    w_os: jnp.array = eqx.field(static=False)
     x_os_lo: int
     x_os_hi: int
     y_os_lo: int
     y_os_hi: int
 
-    X_os: jnp.array
-    Y_os: jnp.array
+    X_os: jnp.array = eqx.field(static=False)
+    Y_os: jnp.array = eqx.field(static=False)
 
     def __init__(
         self,
@@ -543,10 +544,10 @@ class FourierRenderer(BaseRenderer):
     precision: int = eqx.field(static=True)
     use_interp_amps: bool = eqx.field(static=True)
 
-    etas: jax.numpy.array
-    betas: jax.numpy.array
-    n_ax: jax.numpy.array
-    amps_n_ax: jax.numpy.array
+    etas: jax.numpy.array = eqx.field(static=False)
+    betas: jax.numpy.array = eqx.field(static=False)
+    n_ax: jax.numpy.array = eqx.field(static=False)
+    amps_n_ax: jax.numpy.array = eqx.field(static=False)
 
     def __init__(
         self,
@@ -719,8 +720,8 @@ class HybridRenderer(FourierRenderer):
     """
 
     num_pixel_render: int = eqx.field(static=True)
-    w_real: jax.numpy.array = eqx.field(static=True)
-    w_fourier: jax.numpy.array = eqx.field(static=True)
+    w_real: jax.numpy.array = eqx.field(static=False)
+    w_fourier: jax.numpy.array = eqx.field(static=False)
     sig_psf_approx: float = eqx.field(static=True)
 
     def __init__(
@@ -782,7 +783,7 @@ class HybridRenderer(FourierRenderer):
         sig_y = jnp.sqrt(
             (self.pixel_PSF * (psf_Y - psf_Y.mean()) ** 2).sum() / self.pixel_PSF.sum()
         )
-        self.sig_psf_approx = 0.5 * (sig_x + sig_y)
+        self.sig_psf_approx = float(0.5 * (sig_x + sig_y))
 
     def render_sersic_hybrid(self, xc, yc, flux, r_eff, n, ellip, theta):
         amps, sigmas = self.get_amps_sigmas(flux, r_eff, n)
