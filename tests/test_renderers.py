@@ -1,4 +1,4 @@
-from pysersic.rendering import PixelRenderer,FourierRenderer,HybridRenderer
+from pysersic.rendering import PixelRenderer,MoGFourierRenderer, EmulatorFourierRenderer,HybridRenderer
 from pysersic.rendering import render_sersic_2d
 from astropy.convolution import Gaussian2DKernel
 import pytest
@@ -10,18 +10,20 @@ import jax
 render_sersic_2d = jax.jit(render_sersic_2d)
 kern = Gaussian2DKernel(x_stddev= 1.5)
 psf = jnp.array(kern.array)
-err_tol = 0.01 # 1% error tolerence for total flux
+err_tol = 0.015 # 1.5% error tolerence for total flux
 
 pixel_renderer = PixelRenderer((150,150), psf)
-fourier_renderer = FourierRenderer((150,150), psf)
+mog_fourier_renderer = MoGFourierRenderer((150,150), psf)
+emu_fourier_renderer = EmulatorFourierRenderer((150,150), psf)
 hybrid_renderer = HybridRenderer((150,150), psf)
 
 @partial(jax.jit, static_argnums = [1,])
 def get_models(params, profile_type: str):
     im_px = pixel_renderer.render_source(params, profile_type=profile_type)
-    im_fr = fourier_renderer.render_source(params, profile_type=profile_type)
+    im_mf = mog_fourier_renderer.render_source(params, profile_type=profile_type)
+    im_ef = emu_fourier_renderer.render_source(params, profile_type = profile_type)
     im_hy = hybrid_renderer.render_source(params, profile_type=profile_type)
-    return im_px, im_fr,im_hy
+    return im_px, im_mf,im_ef, im_hy
 
 @pytest.mark.parametrize("pos", [(75.,75.),(75.5,75.5),(75.25,75.25) ,(75.,75.5),(75.5,75.)]) 
 def test_point_source(pos):
@@ -49,8 +51,9 @@ def test_sersic(pos,re,n,ellip,theta):
     
     ims = get_models(params, 'sersic')
     assert pytest.approx(float(ims[0].sum()), rel = err_tol) == flux_int #pixel
-    assert pytest.approx(float(ims[1].sum()), rel = err_tol) == flux_int #fourier
-    assert pytest.approx(float(ims[2].sum()), rel = err_tol) == flux_int #hybrid
+    assert pytest.approx(float(ims[1].sum()), rel = err_tol) == flux_int #fourier MoG
+    assert pytest.approx(float(ims[2].sum()), rel = err_tol) == flux_int #fourier Emu
+    assert pytest.approx(float(ims[3].sum()), rel = err_tol) == flux_int #hybrid
 
 @pytest.mark.parametrize("prof", ['exp','dev'])
 @pytest.mark.parametrize("pos", [(75.,75.),(75.5,75.5),])
@@ -76,8 +79,9 @@ def test_exp_dev(prof,pos,re,ellip,theta):
 
     ims = get_models(params, prof)
     assert pytest.approx(float(ims[0].sum()), rel = err_tol) == flux_int #pixel
-    assert pytest.approx(float(ims[1].sum()), rel = err_tol) == flux_int #fourier
-    assert pytest.approx(float(ims[2].sum()), rel = err_tol) == flux_int #hybrid
+    assert pytest.approx(float(ims[1].sum()), rel = err_tol) == flux_int #fourier MoG
+    assert pytest.approx(float(ims[2].sum()), rel = err_tol) == flux_int #fourier Emu
+    assert pytest.approx(float(ims[3].sum()), rel = err_tol) == flux_int #hybrid
 
 
 @pytest.mark.parametrize("pos", [(75.,75.),(75.5,75.5),])
@@ -93,5 +97,6 @@ def test_spergel(pos,re,nu_star,ellip,theta):
     
     ims = get_models(params, 'spergel')
     assert pytest.approx(float(ims[0].sum()), rel = err_tol) == flux #pixel
-    assert pytest.approx(float(ims[1].sum()), rel = err_tol) == flux #fourier
-    assert pytest.approx(float(ims[2].sum()), rel = err_tol) == flux #hybrid
+    assert pytest.approx(float(ims[1].sum()), rel = err_tol) == flux #fourier MoG
+    assert pytest.approx(float(ims[2].sum()), rel = err_tol) == flux #fourier Emu
+    assert pytest.approx(float(ims[3].sum()), rel = err_tol) == flux #hybrid

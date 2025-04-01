@@ -1,7 +1,6 @@
 import warnings
 from abc import abstractmethod
-from typing import Iterable, Optional, Tuple, Union
-
+from typing import Iterable, Optional, Tuple, Union,Literal
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -533,7 +532,13 @@ class PixelRenderer(BaseRenderer):
         )
 
 
-class FourierRenderer(BaseRenderer):
+def sersic_hankel_emul_func(nu_in,n):
+    c = [-1.6021528 ,  0.33155227,  0.2694067 ,  0.73505086]
+    nu =  nu_in + 1e-8
+    numerator = c[0]*jnp.log(nu) + c[1]/nu + c[2]
+    return jnp.square( jax.nn.sigmoid(numerator/ jnp.sqrt(n) + c[3]) )
+
+class MoGFourierRenderer(BaseRenderer):
     """
     Class to render sources based on rendering them in Fourier space. Sersic profiles are modeled as a series of Gaussian following Shajib (2019) (https://arxiv.org/abs/1906.08263) and the implementation in lenstronomy (https://github.com/lenstronomy/lenstronomy/blob/main/lenstronomy/LensModel/Profiles/gauss_decomposition.py)
     """
@@ -548,6 +553,7 @@ class FourierRenderer(BaseRenderer):
     betas: jax.numpy.array = eqx.field(static=False)
     n_ax: jax.numpy.array = eqx.field(static=False)
     amps_n_ax: jax.numpy.array = eqx.field(static=False)
+
 
     def __init__(
         self,
@@ -587,7 +593,7 @@ class FourierRenderer(BaseRenderer):
         self.etas, self.betas = calculate_etas_betas(self.precision)
         if not use_interp_amps and not jax.config.x64_enabled:
             warnings.warn(
-                "!! WARNING !! - Gaussian decomposition can be numerically unstable when using jax's default 32 bit. Please either enable jax 64 bit or set 'use_poly_amps' = True in the renderer kwargs"
+                "!! WARNING !! - Gaussian decomposition can be numerically unstable when using jax's default 32 bit. Please either enable jax 64 bit or set 'use_interp_amps' = True in the renderer kwargs"
             )
 
         # Fit polynomial for smooth interpolation
@@ -604,6 +610,8 @@ class FourierRenderer(BaseRenderer):
                 self.n_sigma,
             )[0]
         )(self.n_ax)
+
+
 
     def get_amps_sigmas(self, flux, r_eff, n):
         if self.use_interp_amps:
@@ -633,7 +641,7 @@ class FourierRenderer(BaseRenderer):
         q = 1.0 - ellip
         Fgal = render_gaussian_fourier(self.FX, self.FY, amps, sigmas, xc, yc, theta, q)
         return Fgal
-
+    
     def render_sersic(self, params: dict) -> jax.numpy.array:
         """Render a Sersic profile
 
@@ -712,7 +720,104 @@ class FourierRenderer(BaseRenderer):
         return self.conv_fft(F_im)
 
 
-class HybridRenderer(FourierRenderer):
+class FourierRenderer(MoGFourierRenderer):
+    def __init__(
+        self,
+        im_shape: Iterable,
+        pixel_PSF: jax.numpy.array,
+        frac_start: Optional[float] = 1e-2,
+        frac_end: Optional[float] = 15.0,
+        n_sigma: Optional[int] = 15,
+        precision: Optional[int] = 10,
+        use_interp_amps: Optional[bool] = True,
+    ) -> None:
+        super.__init__(
+            im_shape=im_shape,
+            pixel_PSF=pixel_PSF,
+            frac_start=frac_start,
+            frac_end=frac_end,
+            n_sigma=n_sigma,
+            precision=precision,
+            use_interp_amps=use_interp_amps,
+        )
+        warnings.warn("The original 'FourierRenderer' has been rename 'MoGFourierRenderer. Note in future releases this name will be deprecated'",DeprecationWarning)
+
+class EmulatorFourierRenderer(MoGFourierRenderer):
+    emul_func: callable = eqx.field(static=True)
+
+    def __init__(
+        self,
+        im_shape: Iterable,
+        pixel_PSF: jax.numpy.array,
+        emul_func: Optional[Union[callable,str]] = 'F'
+    ) -> None:
+        super().__init__(im_shape = im_shape, pixel_PSF= pixel_PSF)
+
+        if isinstance(emul_func, str):
+            if emul_func == 'F':
+                self.emul_func = F_tilde
+            elif emul_func == 'F_A':
+                self.emul_func = F_tilde_A
+            else:
+                raise ValueError("Only 'F' and 'F_A' are pre-computed functions, please see documentiaion")
+        elif isinstance(emul_func,callable):
+            warnings.warn('You are using a user-specified emulator function, if this is not accurate the results will be unreliable. Be sure you know what you are doing and double check with other methods')
+            self.emul_func = emul_func
+        else:
+            raise TypeError("Argument 'emul_func' must be either a string or callable")
+
+    
+    def render_sersic_emul_fourier(self, xc, yc, flux, r_eff, n, ellip, theta):
+        theta = theta + (jnp.pi / 2.0)
+        Ui = self.FX * jnp.cos(theta) + self.FY* jnp.sin(theta)
+        Vi = -1 * self.FX * jnp.sin(theta) + self.FY * jnp.cos(theta)
+
+        k_tilde = jnp.hypot(Ui, Vi*(1.-ellip) ) * r_eff*2*np.pi
+        Fgal = self.emul_func(k_tilde, n)
+        in_exp = (
+            - 1j * 2 * jnp.pi * self.FX * xc
+            - 1j * 2 * jnp.pi * self.FY * yc
+        )
+        return Fgal * jnp.exp(in_exp) * flux
+    
+    def render_sersic(self, params: dict) -> jax.numpy.array:
+        """Render a Sersic profile
+
+        Parameters
+        ----------
+        xc : float
+            Central x position
+        yc : float
+            Central y position
+        flux : float
+            Total flux
+        r_eff : float
+            Effective radius
+        n : float
+            Sersic index
+        ellip : float
+            Ellipticity
+        theta : float
+            Position angle in radians
+
+        Returns
+        -------
+        jax.numpy.array
+            Rendered Sersic model
+        """
+        F_im = self.render_sersic_emul_fourier(
+            params["xc"],
+            params["yc"],
+            params["flux"],
+            params["r_eff"],
+            params["n"],
+            params["ellip"],
+            params["theta"],
+        )
+
+        return F_im, 0.,0.
+
+class HybridRenderer(MoGFourierRenderer):
     """
     Class to render sources based on the hybrid rendering scheme introduced in Lang (2020). This avoids some of the artifacts introduced by rendering sources purely in Fourier space. Sersic profiles are modeled as a series of Gaussian following Shajib (2019) (https://arxiv.org/abs/1906.08263) and the implementation in lenstronomy (https://github.com/lenstronomy/lenstronomy/blob/main/lenstronomy/LensModel/Profiles/gauss_decomposition.py).
 
@@ -1289,5 +1394,45 @@ def sersic_gauss_decomp(
 
     return amps, sigmas
 
+def G(k_in, n):
+    k = k_in + 1e-4
+    a = jnp.array(
+        [
+            2.27361328549901,
+            0.0795856,
+            0.054102138,
+            0.13979608,
+            0.10258421077129,
+            0.925636,
+            0.439828534772359,
+            1.4859663,
+            0.015870415,
+            0.00511146791581249,
+            0.745477235501201,
+        ]
+    )
+    sqrt_n = jnp.sqrt(n)
+    h = (
+        -a[6] * sqrt_n
+        + (k - a[7]) / (n - a[8])
+        + a[9] * jnp.square(a[10] * jnp.sqrt(k) * n - 1.0)
+    )
+    return (
+        a[0]
+        / sqrt_n
+        * (jnp.log(k) - a[1] / n - a[2] / k - a[3] + a[4] / (k + a[5]) * jnp.square(h))
+    )
 
-__version__ = "testBN_OLD"
+
+def F_tilde(k, n):
+    return 1.0 / (1.0 + jnp.exp(G(k, n)))
+
+
+def G_A(k_in, n):
+    k = k_in + 1e-4
+    a = jnp.array([-0.105035484, 2.46661648594762, 0.3465032])
+    return a[0] + a[1] * (-a[2] * k / (k + n) + jnp.log(k)) / jnp.sqrt(n)
+
+
+def F_tilde_A(k, n):
+    return 1./(1. + jnp.exp( G_A(k,n) ) )
