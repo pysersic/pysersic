@@ -1,12 +1,12 @@
 import warnings
 from abc import abstractmethod
 from typing import Iterable, Optional, Tuple, Union,Literal
-from numpyro import deterministic
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
 from interpax import interp1d
+from numpyro import deterministic
 from scipy.special import comb
 
 from .exceptions import *
@@ -19,7 +19,7 @@ base_profile_types = [
     "pointsource",
     "exp",
     "dev",
-    "spergel"
+    "spergel",
 ]
 base_profile_params = dict(
     zip(
@@ -55,7 +55,7 @@ base_profile_params = dict(
             ["xc", "yc", "flux"],
             ["xc", "yc", "flux", "r_eff", "ellip", "theta"],
             ["xc", "yc", "flux", "r_eff", "ellip", "theta"],
-            ["xc", "yc", "flux", "r_eff", "nu", "ellip", "theta"]
+            ["xc", "yc", "flux", "r_eff", "nu", "ellip", "theta"],
         ],
     )
 )
@@ -65,18 +65,17 @@ class BaseRenderer(eqx.Module):
     im_shape: tuple = eqx.field(static=True)
     psf_shape: tuple = eqx.field(static=True)
     fft_shape: tuple = eqx.field(static=True)
-    profile_func_dict: dict = eqx.field(static=True)
 
-    pixel_PSF: jax.numpy.array
-    PSF_fft: jax.numpy.array
-    X: jax.numpy.array
-    Y: jax.numpy.array
-    FX: jax.numpy.array
-    FY: jax.numpy.array
+    pixel_PSF: jax.numpy.array = eqx.field(static=False)
+    PSF_fft: jax.numpy.array = eqx.field(static=False)
+    X: jax.numpy.array = eqx.field(static=False)
+    Y: jax.numpy.array = eqx.field(static=False)
+    FX: jax.numpy.array = eqx.field(static=False)
+    FY: jax.numpy.array = eqx.field(static=False)
     x_mid: float
     y_mid: float
-    fft_zeros: jnp.array
-    img_zeros: jnp.array
+    fft_zeros: jnp.array = eqx.field(static=False)
+    img_zeros: jnp.array = eqx.field(static=False)
 
     def __init__(self, im_shape: Iterable, pixel_PSF: jax.numpy.array) -> None:
         """Base class for different Renderers
@@ -88,13 +87,13 @@ class BaseRenderer(eqx.Module):
         pixel_PSF : jax.numpy.array
             Pixelized version of the PSF
         """
-        self.im_shape = im_shape
+        self.im_shape = tuple(int(x) for x in im_shape)
         self.pixel_PSF = pixel_PSF
         if not jnp.isclose(jnp.sum(self.pixel_PSF), 1.0, 0.1):
             warnings.warn(
                 "PSF does not appear to be appropriately normalized; Sum(psf) is more than 0.1 away from 1."
             )
-        self.psf_shape = jnp.shape(self.pixel_PSF)
+        self.psf_shape = tuple(int(x) for x in jnp.shape(self.pixel_PSF))
         if jnp.any(self.im_shape < self.psf_shape):
             raise KernelError(
                 "PSF pixel image size must be smaller than science image."
@@ -109,7 +108,7 @@ class BaseRenderer(eqx.Module):
         f1d1 = jnp.fft.rfftfreq(self.im_shape[0])
         f1d2 = jnp.fft.fftfreq(self.im_shape[1])
         self.FX, self.FY = jnp.meshgrid(f1d1, f1d2)
-        self.fft_shape = self.FX.shape
+        self.fft_shape = tuple(int(x) for x in self.FX.shape)
         fft_shift_arr_x = jnp.exp(
             jax.lax.complex(0.0, -1.0)
             * 2.0
@@ -132,19 +131,21 @@ class BaseRenderer(eqx.Module):
             * fft_shift_arr_y
         )
 
-        # All the  renderers here these profile types
-        self.profile_func_dict = {}
-        for profile_type in base_profile_types:
-            self.profile_func_dict[profile_type] = getattr(
-                self, f"render_{profile_type}"
-            )
+        object.__setattr__(
+            self,
+            "profile_func_dict",
+            {
+                profile_type: getattr(self, f"render_{profile_type}")
+                for profile_type in base_profile_types
+            },
+        )
 
         self.fft_zeros = jnp.zeros(self.fft_shape)
         self.img_zeros = jnp.zeros(self.im_shape)
 
-    def conv_img_and_fft(self, image,F_im):
+    def conv_img_and_fft(self, image, F_im):
         img_fft = jnp.fft.rfft2(image)
-        conv_fft = (img_fft+F_im) * self.PSF_fft
+        conv_fft = (img_fft + F_im) * self.PSF_fft
         conv_im = jnp.fft.irfft2(conv_fft, s=self.im_shape)
         return conv_im
 
@@ -169,7 +170,7 @@ class BaseRenderer(eqx.Module):
         Model image
             Combination of all sources to be compared to observations
         """
-        return self.conv_img_and_fft(int_im,F_im) + obs_im
+        return self.conv_img_and_fft(int_im, F_im) + obs_im
 
     @abstractmethod
     def render_sersic(self, params: dict):
@@ -292,20 +293,19 @@ class BaseRenderer(eqx.Module):
         return self.render_sersic(to_sersic)
 
     def render_spergel(self, params: dict):
-        
         F_im = render_spergel_fourier(
-            self.FX, 
+            self.FX,
             self.FY,
-            params['r_eff'], 
-            params['flux'], 
-            params['nu_star'],
-            params['xc'],
-            params['yc'], 
-            params['theta'], 
-            1. - params['ellip']
+            params["r_eff"],
+            params["flux"],
+            params["nu_star"],
+            params["xc"],
+            params["yc"],
+            params["theta"],
+            1.0 - params["ellip"],
         )
         return F_im, self.img_zeros, self.img_zeros
-    
+
     def render_for_model(self, param_dict, types, suffix):
         F_tot = jnp.zeros(self.fft_shape)
         int_im_tot = jnp.zeros(self.im_shape)
@@ -353,14 +353,14 @@ class PixelRenderer(BaseRenderer):
     os_pixel_size: int = eqx.field(static=True)
     num_os: int = eqx.field(static=True)
 
-    w_os: jnp.array
+    w_os: jnp.array = eqx.field(static=False)
     x_os_lo: int
     x_os_hi: int
     y_os_lo: int
     y_os_hi: int
 
-    X_os: jnp.array
-    Y_os: jnp.array
+    X_os: jnp.array = eqx.field(static=False)
+    Y_os: jnp.array = eqx.field(static=False)
 
     def __init__(
         self,
@@ -478,7 +478,7 @@ class PixelRenderer(BaseRenderer):
             params["ellip"],
             params["theta"],
         )
-        return self.fft_zeros, im_int, 0.
+        return self.fft_zeros, im_int, 0.0
 
     def render_pointsource(self, params: dict) -> jax.numpy.array:
         """Render a Point source by interpolating given PSF into image. Currently jax only supports linear intepolation.
@@ -507,8 +507,8 @@ class PixelRenderer(BaseRenderer):
             mode="constant",
         )
 
-        return self.fft_zeros, 0., shifted_psf
-    
+        return self.fft_zeros, 0.0, shifted_psf
+
     def combine_scene(self, F_im, int_im, obs_im):
         """Combine scene for PixelRenderer when nothing is rendered in Fourier space
 
@@ -526,7 +526,11 @@ class PixelRenderer(BaseRenderer):
         Model image
             Combination of all sources to be compared to observations
         """
-        return self.conv_img_and_fft(int_im+self.img_zeros, F_im + self.fft_zeros) + obs_im
+        return (
+            self.conv_img_and_fft(int_im + self.img_zeros, F_im + self.fft_zeros)
+            + obs_im
+        )
+
 
 def sersic_hankel_emul_func(nu_in,n):
     c = [-1.6021528 ,  0.33155227,  0.2694067 ,  0.73505086]
@@ -544,10 +548,12 @@ class MoGFourierRenderer(BaseRenderer):
     n_sigma: int = eqx.field(static=True)
     precision: int = eqx.field(static=True)
     use_interp_amps: bool = eqx.field(static=True)
-    etas: jax.numpy.array
-    betas: jax.numpy.array
-    n_ax: jax.numpy.array
-    amps_n_ax: jax.numpy.array
+
+    etas: jax.numpy.array = eqx.field(static=False)
+    betas: jax.numpy.array = eqx.field(static=False)
+    n_ax: jax.numpy.array = eqx.field(static=False)
+    amps_n_ax: jax.numpy.array = eqx.field(static=False)
+
 
     def __init__(
         self,
@@ -670,8 +676,7 @@ class MoGFourierRenderer(BaseRenderer):
             params["ellip"],
             params["theta"],
         )
-
-        return F_im, 0.,0.
+        return F_im, 0.0, 0.0
 
     def render_pointsource(self, params: dict) -> jax.numpy.array:
         """Render a Point source
@@ -693,8 +698,8 @@ class MoGFourierRenderer(BaseRenderer):
         F_im = render_pointsource_fourier(
             self.FX, self.FY, params["xc"], params["yc"], params["flux"]
         )
-        return F_im, 0., 0.
-    
+        return F_im, 0.0, 0.0
+
     def combine_scene(self, F_im, int_im, obs_im):
         """Combine scene for FourierRenderer where everything is rendered in Fourier space
 
@@ -713,6 +718,7 @@ class MoGFourierRenderer(BaseRenderer):
             Combination of all sources to be compared to observations
         """
         return self.conv_fft(F_im)
+
 
 class FourierRenderer(MoGFourierRenderer):
     def __init__(
@@ -819,8 +825,8 @@ class HybridRenderer(MoGFourierRenderer):
     """
 
     num_pixel_render: int = eqx.field(static=True)
-    w_real: jax.numpy.array = eqx.field(static=True)
-    w_fourier: jax.numpy.array = eqx.field(static=True)
+    w_real: jax.numpy.array = eqx.field(static=False)
+    w_fourier: jax.numpy.array = eqx.field(static=False)
     sig_psf_approx: float = eqx.field(static=True)
 
     def __init__(
@@ -882,7 +888,7 @@ class HybridRenderer(MoGFourierRenderer):
         sig_y = jnp.sqrt(
             (self.pixel_PSF * (psf_Y - psf_Y.mean()) ** 2).sum() / self.pixel_PSF.sum()
         )
-        self.sig_psf_approx = 0.5 * (sig_x + sig_y)
+        self.sig_psf_approx = float(0.5 * (sig_x + sig_y))
 
     def render_sersic_hybrid(self, xc, yc, flux, r_eff, n, ellip, theta):
         amps, sigmas = self.get_amps_sigmas(flux, r_eff, n)
@@ -950,7 +956,7 @@ class HybridRenderer(MoGFourierRenderer):
             params["ellip"],
             params["theta"],
         )
-        return F, 0., im
+        return F, 0.0, im
 
     def render_pointsource(self, params: dict) -> jax.numpy.array:
         """Render a Point source
@@ -972,7 +978,7 @@ class HybridRenderer(MoGFourierRenderer):
         F_im = render_pointsource_fourier(
             self.FX, self.FY, params["xc"], params["yc"], params["flux"]
         )
-        return F_im, 0., 0.
+        return F_im, 0.0, 0.0
 
     def combine_scene(self, F_im, int_im, obs_im):
         """Combine scene for FourierRenderer where nothing is rendered in Intrinsic space
@@ -992,6 +998,7 @@ class HybridRenderer(MoGFourierRenderer):
             Combination of all sources to be compared to observations
         """
         return self.conv_fft(F_im) + obs_im
+
 
 def sersic1D(
     r: Union[float, jax.numpy.array], flux: float, re: float, n: float
@@ -1014,13 +1021,26 @@ def sersic1D(
     jax.numpy.array
         Sersic profile evaluated at r
     """
-    bn = 1.9992 * n - 0.3271
+    bn = (2 * n - 1 / 3 + 4 / (405 * n) + 46 / (25515 * n**2)) + (
+        ((0.00018073182821237496 / (n + jnp.exp(n))) + 3.7026973571904255e-5)
+        / (-0.09149183119702775 - n) ** 2
+    ) * (
+        (
+            jnp.log(n)
+            + (
+                ((n * 2.6248718397705195) + -0.9727511612512357)
+                / (n ** (-4) + 94.78011643586419)
+            )
+        )
+        / (n + -0.006044236674273689)
+    )
     Ie = (
         flux
         / (re * re * 2 * jnp.pi * n * jnp.exp(bn + jax.scipy.special.gammaln(2 * n)))
         * bn ** (2 * n)
     )
     return Ie * jnp.exp(-bn * ((r / re) ** (1.0 / n) - 1.0))
+
 
 def render_spergel_fourier(
     FX: jax.numpy.array,
@@ -1061,16 +1081,21 @@ def render_spergel_fourier(
     """
     theta = theta + (jnp.pi / 2.0)
     Ui = FX * jnp.cos(theta) + FY * jnp.sin(theta)
-    Vi = -1 * FX * jnp.sin(theta) + FY * jnp.cos(theta) 
-    nu = deterministic('nu', 1./nu_star - 1.)
+    Vi = -1 * FX * jnp.sin(theta) + FY * jnp.cos(theta)
+    nu = deterministic("nu", 1.0 / nu_star - 1.0)
 
-    in_exp = - 1j * 2 * jnp.pi * FX * xc - 1j * 2 * jnp.pi * FY * yc
-    
-    r_maj = 2*np.pi*r_eff
-    r_min = 2*np.pi*r_eff*q
+    in_exp = -1j * 2 * jnp.pi * FX * xc - 1j * 2 * jnp.pi * FY * yc
+
+    r_maj = 2 * np.pi * r_eff
+    r_min = 2 * np.pi * r_eff * q
     c_nu = c_nu_approx(nu)
-    Fgal = jnp.exp(in_exp)* flux * jnp.power(1. + (r_maj**2 * Ui**2 + r_min**2 * Vi**2)/c_nu**2  , -(1.+nu) )
+    Fgal = (
+        jnp.exp(in_exp)
+        * flux
+        * jnp.power(1.0 + (r_maj**2 * Ui**2 + r_min**2 * Vi**2) / c_nu**2, -(1.0 + nu))
+    )
     return Fgal
+
 
 def render_gaussian_fourier(
     FX: jax.numpy.array,
@@ -1245,7 +1270,20 @@ def render_sersic_2d(
     jax.numpy.array
         Sersic model evaluated at given locations
     """
-    bn = 1.9992 * n - 0.3271
+    # bn = 1.9992 * n - 0.3271
+    bn = (2 * n - 1 / 3 + 4 / (405 * n) + 46 / (25515 * n**2)) + (
+        ((0.00018073182821237496 / (n + jnp.exp(n))) + 3.7026973571904255e-5)
+        / (-0.09149183119702775 - n) ** 2
+    ) * (
+        (
+            jnp.log(n)
+            + (
+                ((n * 2.6248718397705195) + -0.9727511612512357)
+                / (n ** (-4) + 94.78011643586419)
+            )
+        )
+        / (n + -0.006044236674273689)
+    )
     a, b = r_eff, (1 - ellip) * r_eff
     theta = theta + (jnp.pi / 2.0)
     cos_theta, sin_theta = jnp.cos(theta), jnp.sin(theta)
@@ -1260,12 +1298,11 @@ def render_sersic_2d(
     out = amplitude * jnp.exp(-bn * (z ** (1 / n) - 1)) / (1.0 - ellip)
     return out
 
+
 def c_nu_approx(nu):
-    params = {'a': 0.80882865,
-    'b': 0.18703458,
-    'd': 1.1386762,
-    'e': 1.4785621}
-    return params['a'] + params['b']*nu + params['d']*jnp.log(params['e']+nu)
+    params = {"a": 0.80882865, "b": 0.18703458, "d": 1.1386762, "e": 1.4785621}
+    return params["a"] + params["b"] * nu + params["d"] * jnp.log(params["e"] + nu)
+
 
 def calculate_etas_betas(precision: int) -> Tuple[jax.numpy.array, jax.numpy.array]:
     """Calculate the weights and nodes for the Gaussian decomposition described in Shajib (2019) (https://arxiv.org/abs/1906.08263)
