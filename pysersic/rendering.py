@@ -1,6 +1,6 @@
 import warnings
 from abc import abstractmethod
-from typing import Iterable, Optional, Tuple, Union,Literal
+from typing import Iterable, Optional, Tuple, Union,Literal, Callable
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -740,7 +740,7 @@ class FourierRenderer(MoGFourierRenderer):
             precision=precision,
             use_interp_amps=use_interp_amps,
         )
-        warnings.warn("The original 'FourierRenderer' has been rename 'MoGFourierRenderer. Note in future releases this name will be deprecated'",DeprecationWarning)
+        warnings.warn("The original 'FourierRenderer' has been renamed 'MoGFourierRenderer. Note in future releases this name will be deprecated'",DeprecationWarning)
 
 class EmulatorFourierRenderer(MoGFourierRenderer):
     emul_func: callable = eqx.field(static=True)
@@ -755,12 +755,10 @@ class EmulatorFourierRenderer(MoGFourierRenderer):
 
         if isinstance(emul_func, str):
             if emul_func == 'F':
-                self.emul_func = F_tilde
-            elif emul_func == 'F_A':
-                self.emul_func = F_tilde_A
+                self.emul_func = F_r_tilde
             else:
-                raise ValueError("Only 'F' and 'F_A' are pre-computed functions, please see documentiaion")
-        elif isinstance(emul_func,callable):
+                raise ValueError("Only 'F_r_tilde' from Miller & Pasha (2025) is availible as a pre-computed function, please see documentiaion")
+        elif isinstance(emul_func,Callable):
             warnings.warn('You are using a user-specified emulator function, if this is not accurate the results will be unreliable. Be sure you know what you are doing and double check with other methods')
             self.emul_func = emul_func
         else:
@@ -1394,45 +1392,84 @@ def sersic_gauss_decomp(
 
     return amps, sigmas
 
-def G(k_in, n):
+
+def cube(x):
+    """Simple cube compatible with jax
+
+    Parameters
+    ----------
+    x : any
+
+    Returns
+    -------
+    x^3
+    """    
+    return jnp.square(x)*x
+
+def G(k_in,n):
+    """
+    Equation used to Emulate the radial Fourier transform of the Sersic profile. Discovered using Symbolic regression
+
+    Parameters
+    ----------
+    k_in : float or array
+        radial patial frequency coordinates
+    n : float or array
+        Sersic index
+
+    Returns
+    -------
+    G(k,n)
+        See Miller & Pasha (2025) for details
+
+    """
     k = k_in + 1e-4
-    a = jnp.array(
-        [
-            2.27361328549901,
-            0.0795856,
-            0.054102138,
-            0.13979608,
-            0.10258421077129,
-            0.925636,
-            0.439828534772359,
-            1.4859663,
-            0.015870415,
-            0.00511146791581249,
-            0.745477235501201,
-        ]
-    )
-    sqrt_n = jnp.sqrt(n)
-    h = (
-        -a[6] * sqrt_n
-        + (k - a[7]) / (n - a[8])
-        + a[9] * jnp.square(a[10] * jnp.sqrt(k) * n - 1.0)
-    )
-    return (
-        a[0]
-        / sqrt_n
-        * (jnp.log(k) - a[1] / n - a[2] / k - a[3] + a[4] / (k + a[5]) * jnp.square(h))
-    )
+    a0 = 2.245374
+    a1 = 0.029371526
+    a2 = 2.1431181
+    a3 = -3.7275262
+    a4 = 0.091609545
+    a5 = 0.32785136
 
+    H = a0*jnp.sqrt(n + a1*(k - a2)* jnp.exp( jnp.exp(jnp.sqrt(n) - cube(n)) ) )
+    J = jnp.exp( (a3*k*jnp.exp(n*(n-1)) - 1)*jnp.exp(n*(1-n)) )
+    return (H + J)*( jnp.log(k) - a4) / n - a5
 
-def F_tilde(k, n):
-    return 1.0 / (1.0 + jnp.exp(G(k, n)))
+def G_raw(k_in, n):
+    """
+    Equation used to Emulate the radial Fourier transform of the Sersic profile. Discovered using Symbolic regression. This is the raw version directly output from pysr that is only used of consistency checks
 
+    Parameters
+    ----------
+    k_in : float or array
+        radial patial frequency coordinates
+    n : float or array
+        Sersic index
 
-def G_A(k_in, n):
+    Returns
+    -------
+    G(k,n)
+        See Miller & Pasha (2025) for details
+
+    """
     k = k_in + 1e-4
-    a = jnp.array([-0.105035484, 2.46661648594762, 0.3465032])
-    return a[0] + a[1] * (-a[2] * k / (k + n) + jnp.log(k)) / jnp.sqrt(n)
+    return jnp.divide(1.,n) * (((jnp.exp((k * -3.7275262) - jnp.exp(n - jnp.square(n))) + (jnp.sqrt(n - ((k + -2.1431181) * (-0.029371526 * jnp.exp(jnp.exp(jnp.sqrt(n) - cube(n)))))) * 2.245374)) * (jnp.log(k) + -0.091609545)) + -0.32785136)
 
+def F_r_tilde(k,n):
+    """
+    Emulated radial Fourier transform of the Sersic profile. This equation, specifcally G(k,b) was discovered using Symbolic regression.
 
-def F_tilde_A(k, n):
-    return 1./(1. + jnp.exp( G_A(k,n) ) )
+    Parameters
+    ----------
+    k_in : float or array
+        radial patial frequency coordinates
+    n : float or array
+        Sersic index
+
+    Returns
+    -------
+    G(k,n)
+        See Miller & Pasha (2025) for details
+
+    """
+    return 1. / (1. + jnp.exp( G(k,n) ))
