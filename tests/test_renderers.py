@@ -1,4 +1,4 @@
-from pysersic.rendering import PixelRenderer,MoGFourierRenderer, EmulatorFourierRenderer,HybridRenderer
+from pysersic.rendering import PixelRenderer,MoGFourierRenderer, EmulatorFourierRenderer,HybridRenderer, G, G_raw
 from pysersic.rendering import render_sersic_2d
 from astropy.convolution import Gaussian2DKernel
 import pytest
@@ -100,3 +100,11 @@ def test_spergel(pos,re,nu_star,ellip,theta):
     assert pytest.approx(float(ims[1].sum()), rel = err_tol) == flux #fourier MoG
     assert pytest.approx(float(ims[2].sum()), rel = err_tol) == flux #fourier Emu
     assert pytest.approx(float(ims[3].sum()), rel = err_tol) == flux #hybrid
+
+
+@pytest.mark.parametrize('k', [0.1,1.,10.])
+@pytest.mark.parametrize('n', [0.6,1.5,3.,5])
+def test_G_func(k,n):
+    val_raw = G_raw(k,n)
+    val = G(k,n)
+    assert pytest.approx(val_raw, 0.0001) == val

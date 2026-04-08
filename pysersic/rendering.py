@@ -757,7 +757,7 @@ class EmulatorFourierRenderer(MoGFourierRenderer):
             if emul_func == 'F':
                 self.emul_func = F_r_tilde
             else:
-                raise ValueError("Only 'F_r_tilde' from Miller & Pasha (2025) is availible as a pre-computed function, please see documentiaion")
+                raise ValueError("Only 'F', representing F_r_tilde from Miller & Pasha (2025) is available as a pre-computed function, please see documentation")
         elif isinstance(emul_func,Callable):
             warnings.warn('You are using a user-specified emulator function, if this is not accurate the results will be unreliable. Be sure you know what you are doing and double check with other methods')
             self.emul_func = emul_func
@@ -1431,9 +1431,9 @@ def G(k_in,n):
     a4 = 0.091609545
     a5 = 0.32785136
 
-    H = a0*jnp.sqrt(n + a1*(k - a2)* jnp.exp( jnp.exp(jnp.sqrt(n) - cube(n)) ) )
-    J = jnp.exp( (a3*k*jnp.exp(n*(n-1)) - 1)*jnp.exp(n*(1-n)) )
-    return (H + J)*( jnp.log(k) - a4) / n - a5
+    H = a0*jnp.sqrt(n + a1*(k - a2)* jnp.exp( jnp.exp( jnp.sqrt(n) - cube(n)) ) )
+    J = jnp.exp( (a3*k - jnp.exp(n-jnp.square(n))) )
+    return ( (H + J)*( jnp.log(k) - a4) - a5 )/n
 
 def G_raw(k_in, n):
     """
