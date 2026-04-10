@@ -1473,3 +1473,5 @@ def F_r_tilde(k,n):
 
     """
     return 1. / (1. + jnp.exp( G(k,n) ))
+
+n_bound_dict = {EmulatorFourierRenderer:(0.5,6), HybridRenderer:(0.65,8),MoGFourierRenderer:(0.65,8), PixelRenderer:(0.1,10) }
