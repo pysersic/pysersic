@@ -130,7 +130,7 @@ class PySersicResults():
             post_dict = {}
             for key in post_raw:
                 post_dict[key] = post_raw[key][jnp.newaxis,]
-            self.idata = az.from_dict(post_dict)
+            self.idata = az.from_dict({'posterior':post_dict})
             self.idata = self._parse_injested_data(self.idata,purge_extra=purge_extra)
             self.runtype='svi'
 
@@ -168,7 +168,7 @@ class PySersicResults():
                     to_drop.append(var)
                     if save_model:
                         self.models = data['posterior'][var]
-            data.posterior = data.posterior.drop_vars(to_drop).drop_dims(['model_dim_0','model_dim_1'], errors = 'ignore')
+            data.posterior.ds = data.posterior.ds.drop_vars(to_drop).drop_dims(['model_dim_0','model_dim_1'], errors = 'ignore')
         return data
 
 
