@@ -223,7 +223,7 @@ class PySersicResults():
         Union[pd.DataFrame,dict]
             dict or dataframe with index/keys as parameters and columns/values as the chosen quantiles.
         """
-        xx = self.idata.posterior.quantile(quantiles, dim = ['chain','draw']).to_dict()
+        xx = self.idata.posterior.ds.quantile(quantiles, dim = ['chain','draw']).to_dict()
         out = {} 
         for i in xx['data_vars'].keys():
             out[i] = xx['data_vars'][i]['data']
@@ -423,9 +423,17 @@ def parse_multi_results(results: PySersicResults, source_num: int) -> PySersicRe
             new_res.__setattr__('idata_all', idata)
 
         
-        post_source = az.extract(idata, var_names = source_names+meta_names , combined = False)
-        idata_source = az.from_dict(posterior = {k: v.values for k, v in post_source.data_vars.items()})
-        idata_source.rename_vars(dict(zip(source_names,param_names)), inplace = True)
+        ds = az.extract(
+            idata, 
+            var_names=source_names + meta_names, 
+            combined=False, 
+            keep_dataset=True  # Guarantees an xarray.Dataset output
+        )
+
+        name_map = dict(zip(source_names, param_names))
+        ds_renamed = ds.rename_vars(name_map)
+
+        idata_source = az.from_dict({'posterior':ds_renamed})
 
         new_res.__delattr__('idata')
         new_res.__setattr__('idata', idata_source)
