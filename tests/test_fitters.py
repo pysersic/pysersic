@@ -66,6 +66,7 @@ def test_FitSingle_sample():
         assert post_sum['mean']['flux'] == pytest.approx(199.4, rel = 5e-2)
         assert post_sum['sd']['flux'] == pytest.approx(0.44, rel = 1e-1)
 
+
         assert post_sum['mean']['xc'] == pytest.approx(20.02, rel = 1e-2)
         assert post_sum['sd']['xc'] == pytest.approx(0.0075, rel = 2e-1)
         
