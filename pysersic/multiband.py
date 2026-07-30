@@ -127,6 +127,8 @@ class BaseMultiBandFitter(BaseFitter):
                 self.linked_params_range[param] = [0.,0.9]
             if 'theta' in param:
                 self.linked_params_range[param] = [0,2*np.pi]
+            if param[:3] == 'f_1': #Slightly different condition or else would clash with 'r_eff_1'
+                self.linked_params_range[param] = [0.,1.]
 
         self.linked_params_range.update(linked_params_range) #User-specific updates
 
@@ -399,7 +401,7 @@ class FitMultiBandBSpline(BaseMultiBandFitter):
         bspl_class = make_interp_spline(x = np.linspace(min_lambda-lambda_pad, max_lambda + lambda_pad, num = self.N_knots, endpoint=True),
                                                 y = np.ones(self.N_knots), k = spline_k)
         self.dmat_bands = jnp.array( bspl_class.design_matrix(self.wavelengths, bspl_class.t,k = spline_k).toarray() )
-        wv_to_save_dmat = jnp.clip(self.wv_to_save, a_min = min_lambda, a_max=max_lambda)
+        wv_to_save_dmat = jnp.clip(self.wv_to_save, min_lambda, max_lambda)
         self.dmat_save = jnp.array( bspl_class.design_matrix(wv_to_save_dmat, bspl_class.t,k = spline_k).toarray() )
     
     def sample_param_at_bands(self, name):
