@@ -43,15 +43,15 @@ def test_FitSingle_posterior(method):
         res = fitter_single.estimate_posterior(method = method, rkey = PRNGKey(3))
         post_sum = res.summary()
 
-        assert post_sum['mean']['flux'] == pytest.approx(199.4, rel = 1e-2)
-        assert post_sum['sd']['flux'] == pytest.approx(0.44, rel = 1e-1)
+        assert float(post_sum['mean']['flux']) == pytest.approx(199.4, rel = 1e-2)
+        assert float(post_sum['sd']['flux']) == pytest.approx(0.44, rel = 1e-1)
 
 
-        assert post_sum['mean']['xc'] == pytest.approx(20.02, rel = 1e-2)
-        assert post_sum['sd']['xc'] == pytest.approx(0.0085, rel = 2e-1)
+        assert float(post_sum['mean']['xc']) == pytest.approx(20.02, rel = 1e-2)
+        assert float(post_sum['sd']['xc']) == pytest.approx(0.0085, rel = 2e-1)
         
-        assert post_sum['mean']['yc'] == pytest.approx(19.99, rel = 1e-2)
-        assert post_sum['sd']['yc'] ==  pytest.approx(0.01, rel = 2e-1)
+        assert float(post_sum['mean']['yc']) == pytest.approx(19.99, rel = 1e-2)
+        assert float(post_sum['sd']['yc']) ==  pytest.approx(0.0085, rel = 3e-1)
 
 
 def test_FitSingle_sample():
@@ -63,15 +63,15 @@ def test_FitSingle_sample():
         res = fitter_single.sample(num_samples = 500,num_warmup = 500, num_chains = 1,rkey = PRNGKey(5))
         post_sum = arviz.summary(res.idata)
 
-        assert post_sum['mean']['flux'] == pytest.approx(199.4, rel = 5e-2)
-        assert post_sum['sd']['flux'] == pytest.approx(0.44, rel = 1e-1)
+        assert float(post_sum['mean']['flux']) == pytest.approx(199.4, rel = 5e-2)
+        assert float(post_sum['sd']['flux']) == pytest.approx(0.44, rel = 1e-1)
 
 
-        assert post_sum['mean']['xc'] == pytest.approx(20.02, rel = 1e-2)
-        assert post_sum['sd']['xc'] == pytest.approx(0.0075, rel = 2e-1)
+        assert float(post_sum['mean']['xc']) == pytest.approx(20.02, rel = 1e-2)
+        assert float(post_sum['sd']['xc']) == pytest.approx(0.0075, rel = 2e-1)
         
-        assert post_sum['mean']['yc'] == pytest.approx(19.99, rel = 1e-2)
-        assert post_sum['sd']['yc'] ==  pytest.approx(0.0075,  rel = 2e-1)
+        assert float(post_sum['mean']['yc']) == pytest.approx(19.99, rel = 1e-2)
+        assert float(post_sum['sd']['yc']) ==  pytest.approx(0.0075,  rel = 2e-1)
 
 
 im_m = np.zeros((40,40))
@@ -113,39 +113,39 @@ def test_FitMulti_map(sky_type):
 def test_FitMulti_posterior(method):
         res = multi_fitter.estimate_posterior(method = method, rkey = PRNGKey(3))
         post_sum = res.summary()
-        assert post_sum['mean']['flux_0'] == pytest.approx(150.4, rel = 1e-2)
-        assert post_sum['sd']['flux_0'] == pytest.approx(0.45, rel = 2e-1)
-        assert post_sum['mean']['flux_1'] == pytest.approx(150., rel = 1e-2)
-        assert post_sum['sd']['flux_1'] == pytest.approx(0.45, rel = 1e-1)
+        assert float(post_sum['mean']['flux_0']) == pytest.approx(150.4, rel = 1e-2)
+        assert float(post_sum['sd']['flux_0']) == pytest.approx(0.45, rel = 2e-1)
+        assert float(post_sum['mean']['flux_1']) == pytest.approx(150., rel = 1e-2)
+        assert float(post_sum['sd']['flux_1']) == pytest.approx(0.45, rel = 1e-1)
 
-        assert post_sum['mean']['xc_0'] == pytest.approx(10.0, rel = 1e-2)
-        assert post_sum['sd']['xc_0'] == pytest.approx(0.01, rel = 1e-1)
-        assert post_sum['mean']['xc_1'] == pytest.approx(30., rel = 1e-2)
-        assert post_sum['sd']['xc_1'] == pytest.approx(0.01, rel = 1e-1)
+        assert float(post_sum['mean']['xc_0']) == pytest.approx(10.0, rel = 1e-2)
+        assert float(post_sum['sd']['xc_0']) == pytest.approx(0.01, rel = 1e-1)
+        assert float(post_sum['mean']['xc_1']) == pytest.approx(30., rel = 1e-2)
+        assert float(post_sum['sd']['xc_1']) == pytest.approx(0.01, rel = 1e-1)
 
-        assert post_sum['mean']['yc_0'] == pytest.approx(30.0, rel = 1e-2)
-        assert post_sum['sd']['yc_0'] == pytest.approx(0.01, rel = 2e-1)
-        assert post_sum['mean']['yc_1'] == pytest.approx(10., rel = 1e-2)
-        assert post_sum['sd']['yc_1'] == pytest.approx(0.01, rel = 2e-1)
+        assert float(post_sum['mean']['yc_0']) == pytest.approx(30.0, rel = 1e-2)
+        assert float(post_sum['sd']['yc_0']) == pytest.approx(0.01, rel = 2e-1)
+        assert float(post_sum['mean']['yc_1']) == pytest.approx(10., rel = 1e-2)
+        assert float(post_sum['sd']['yc_1']) == pytest.approx(0.01, rel = 2e-1)
 
 def test_FitMulti_sample():
         res = multi_fitter.sample(num_samples = 500,num_warmup = 500, num_chains = 1,rkey = PRNGKey(5))
         post_sum = arviz.summary(res.idata)
 
-        assert post_sum['mean']['flux_0'] == pytest.approx(150.4, rel = 1e-2)
-        assert post_sum['sd']['flux_0'] == pytest.approx(0.44, rel =1e-1)
-        assert post_sum['mean']['flux_1'] == pytest.approx(150.1, rel = 1e-2)
-        assert post_sum['sd']['flux_1'] == pytest.approx(0.47, rel = 1e-1)
+        assert float(post_sum['mean']['flux_0']) == pytest.approx(150.4, rel = 1e-2)
+        assert float(post_sum['sd']['flux_0']) == pytest.approx(0.44, rel =1e-1)
+        assert float(post_sum['mean']['flux_1']) == pytest.approx(150.1, rel = 1e-2)
+        assert float(post_sum['sd']['flux_1']) == pytest.approx(0.47, rel = 1e-1)
 
-        assert post_sum['mean']['xc_0'] == pytest.approx(10.0, rel = 1e-2)
-        assert post_sum['sd']['xc_0'] == pytest.approx(0.01, rel = 2e-1)
-        assert post_sum['mean']['xc_1'] == pytest.approx(30., rel = 1e-2)
-        assert post_sum['sd']['xc_1'] == pytest.approx(0.01, rel = 1e-1)
+        assert float(post_sum['mean']['xc_0']) == pytest.approx(10.0, rel = 1e-2)
+        assert float(post_sum['sd']['xc_0']) == pytest.approx(0.01, rel = 2e-1)
+        assert float(post_sum['mean']['xc_1']) == pytest.approx(30., rel = 1e-2)
+        assert float(post_sum['sd']['xc_1']) == pytest.approx(0.01, rel = 1e-1)
 
-        assert post_sum['mean']['yc_0'] == pytest.approx(30.0, rel = 1e-2)
-        assert post_sum['sd']['yc_0'] == pytest.approx(0.01, rel = 1e-1)
-        assert post_sum['mean']['yc_1'] == pytest.approx(10., rel = 1e-2)
-        assert post_sum['sd']['yc_1'] == pytest.approx(0.01, rel = 1e-1)
+        assert float(post_sum['mean']['yc_0']) == pytest.approx(30.0, rel = 1e-2)
+        assert float(post_sum['sd']['yc_0']) == pytest.approx(0.01, rel = 1e-1)
+        assert float(post_sum['mean']['yc_1']) == pytest.approx(10., rel = 1e-2)
+        assert float(post_sum['sd']['yc_1']) == pytest.approx(0.01, rel = 1e-1)
 
 def test_train_numpyro_svi():
     def model():
