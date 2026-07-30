@@ -995,7 +995,7 @@ class SourceProperties:
             prior.set_uniform_prior("theta", 0.0, 2.0 * np.pi)
 
             if "sersic" in profile_type:
-                prior.set_uniform_prior("n", 0.65, 8)
+                prior.set_uniform_prior("n", 0.65, 6.)
                 if profile_type == "sersic_pointsource":
                     prior.set_uniform_prior("f_ps", 0.0, 1.0)
             if profile_type == "spergel":
@@ -1024,10 +1024,10 @@ class SourceProperties:
             prior.set_uniform_prior("ellip_1", 0, 0.9)
             prior.set_uniform_prior("ellip_2", 0, 0.9)
             if profile_type == "doublesersic":
-                prior.set_truncated_gaussian_prior("n_1", 4, 1, low=0.65, high=8)
-                prior.set_truncated_gaussian_prior("n_2", 1, 1, low=0.65, high=8)
+                prior.set_truncated_gaussian_prior("n_1", 4, 1, low=0.65, high=6)
+                prior.set_truncated_gaussian_prior("n_2", 1, 1, low=0.65, high=6)
             else:
-                prior.set_truncated_gaussian_prior("n", 4, 1, low=0.65, high=8)
+                prior.set_truncated_gaussian_prior("n", 4, 1, low=0.65, high=6)
 
         return prior
 

@@ -20,6 +20,7 @@ from .rendering import BaseRenderer
 
 ArrayLike = Union[np.array, jax.numpy.array]
 ListLike = Union[np.array,jax.numpy.array,list]
+Idata = "InferenceData-Like"
 
 class PySersicResults():
     def __init__(self,
@@ -135,7 +136,7 @@ class PySersicResults():
 
         return
 
-    def _parse_injested_data(self,data:az.InferenceData, purge_extra:bool = True, save_model: bool = True)->az.InferenceData:
+    def _parse_injested_data(self,data:Idata, purge_extra:bool = True, save_model: bool = True)->Idata:
         """Helper function to postprocess the poterior object (internal use).
 
         Parameters
@@ -350,7 +351,7 @@ class PySersicResults():
             fname+='.asdf'
         af.write_to(fname)
 
-    def sample_posterior(self, num_sample: int, purge_extra: Optional[bool] = True, rkey: Optional[jax.random.PRNGKey] = random.PRNGKey(7))-> az.InferenceData:
+    def sample_posterior(self, num_sample: int, purge_extra: Optional[bool] = True, rkey: Optional[jax.random.PRNGKey] = random.PRNGKey(7))-> Idata:
         """Generate extra samples from an trained SVI posterior
 
         Parameters
@@ -364,7 +365,7 @@ class PySersicResults():
 
         Returns
         -------
-        az.InferenceData
+        Idata
             arviz InferenceData object containing posterior
         """
         assert self.runtype == 'svi', "Can only add samples if SVI was used for inference"
@@ -423,7 +424,7 @@ def parse_multi_results(results: PySersicResults, source_num: int) -> PySersicRe
 
         
         post_source = az.extract(idata, var_names = source_names+meta_names , combined = False)
-        idata_source = az.InferenceData(posterior = post_source)
+        idata_source = az.from_dict(posterior = {k: v.values for k, v in post_source.data_vars.items()})
         idata_source.rename_vars(dict(zip(source_names,param_names)), inplace = True)
 
         new_res.__delattr__('idata')

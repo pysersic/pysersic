@@ -12,7 +12,7 @@ import pandas
 import tqdm
 from jax.random import PRNGKey, split
 from jax.typing import ArrayLike
-from numpyro import deterministic, infer, optim
+from numpyro import deterministic, infer, optim, distributions as dist
 from numpyro.handlers import condition, trace
 from numpyro.infer import SVI, Trace_ELBO
 from numpyro.infer.svi import SVIRunResult
@@ -22,6 +22,30 @@ from .loss import gaussian_loss
 from .priors import PySersicMultiPrior, PySersicSourcePrior, base_profile_params
 from .rendering import BaseRenderer, HybridRenderer, base_profile_types
 from .results import PySersicResults
+from .rendering import n_bound_dict
+
+def get_numpyro_dist_bounds(distribution: dist.Distribution):
+    "Calculate the bounds of a numpyro distribution"
+    # if transformed distribution, check the base distribution and apply transforms
+    if isinstance(distribution,dist.TransformedDistribution):
+        base_dist = distribution.base_dist
+        if base_dist.support == dist.constraints._Real():
+            return -jnp.inf, jnp.inf
+        else:
+            support = base_dist.support
+            lb = support.lower_bound
+            ub = support.upper_bound
+            for t in distribution.transforms:
+                lb = t(lb)
+                ub = t(ub)
+            return lb, ub
+    else: # if not, check constraints
+        if distribution.support == dist.constraints._Real():
+            return -jnp.inf, jnp.inf
+        else:
+            support = distribution.support
+            return support.lower_bound, support.upper_bound
+        
 
 
 def identity(x: Callable) -> Callable:
@@ -109,7 +133,17 @@ class BaseFitter(ABC):
             Numpyro distribution object corresponding to the prior
         """
         self.prior_dict[parameter] = distribution
-
+    
+    def _check_n_prior_bounds(self):
+        for param, prior_dist in self.prior.dist_dict.items():
+            if 'n' in param and 'nu' not in param:
+                lb,ub = get_numpyro_dist_bounds(prior_dist)
+                r_bounds = n_bound_dict[type(self.renderer)]
+                if lb < r_bounds[0] or ub > r_bounds[1]:
+                    raise AssertionError(f"The bounds of the prior for {param} = {lb}-{ub} are outside the bounds allowed for the renderer used: {type(self.renderer)} = {r_bounds}. Please adjust the priors or renderer, see documentation (https://pysersic.readthedocs.io/en/latest/rendering.html) for more details")
+            else:
+                continue
+    
     def sample(
         self,
         rkey: jax.random.PRNGKey,
@@ -456,6 +490,7 @@ class FitSingle(BaseFitter):
             raise AssertionError("Profile must be one of:", base_profile_types)
         self.profile_type_number = 0
         self.prior = prior
+        self._check_n_prior_bounds() # Check prior bounds for index based on renderer
 
     def build_model(self, return_model: bool = True) -> Callable:
         """Generate Numpyro model for the specified image, profile and priors
@@ -538,6 +573,7 @@ class FitMulti(BaseFitter):
             renderer_kwargs=renderer_kwargs,
         )
         self.prior = prior
+        self._check_n_prior_bounds() # Check prior bounds for index based on renderer
 
     def build_model(self, return_model: bool = True) -> Callable:
         """Generate Numpyro model for the specified image, profile and priors
