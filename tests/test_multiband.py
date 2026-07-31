@@ -72,6 +72,6 @@ def test_multiband(fitter):
     assert 'xc' in summ_dict
 
     #Make sure some of the values are right to test if inference was successful
-    assert summ_dict['flux_b']['mean'] == pytest.approx(200, rel = 5e-2)
-    assert summ_dict['xc']['mean'] == pytest.approx(20, rel = 5e-2) 
-    assert summ_dict['yc_b']['mean'] == pytest.approx(20, rel = 5e-2) 
+    assert float(summ_dict['flux_b']['mean']) == pytest.approx(200, rel = 5e-2)
+    assert float(summ_dict['xc']['mean']) == pytest.approx(20, rel = 5e-2) 
+    assert float(summ_dict['yc_b']['mean']) == pytest.approx(20, rel = 5e-2) 

@@ -130,7 +130,7 @@ class PySersicResults():
             post_dict = {}
             for key in post_raw:
                 post_dict[key] = post_raw[key][jnp.newaxis,]
-            self.idata = az.from_dict(post_dict)
+            self.idata = az.from_dict({'posterior':post_dict})
             self.idata = self._parse_injested_data(self.idata,purge_extra=purge_extra)
             self.runtype='svi'
 
@@ -168,7 +168,7 @@ class PySersicResults():
                     to_drop.append(var)
                     if save_model:
                         self.models = data['posterior'][var]
-            data.posterior = data.posterior.drop_vars(to_drop).drop_dims(['model_dim_0','model_dim_1'], errors = 'ignore')
+            data.posterior.ds = data.posterior.ds.drop_vars(to_drop).drop_dims(['model_dim_0','model_dim_1'], errors = 'ignore')
         return data
 
 
@@ -223,7 +223,7 @@ class PySersicResults():
         Union[pd.DataFrame,dict]
             dict or dataframe with index/keys as parameters and columns/values as the chosen quantiles.
         """
-        xx = self.idata.posterior.quantile(quantiles, dim = ['chain','draw']).to_dict()
+        xx = self.idata.posterior.ds.quantile(quantiles, dim = ['chain','draw']).to_dict()
         out = {} 
         for i in xx['data_vars'].keys():
             out[i] = xx['data_vars'][i]['data']
@@ -423,9 +423,17 @@ def parse_multi_results(results: PySersicResults, source_num: int) -> PySersicRe
             new_res.__setattr__('idata_all', idata)
 
         
-        post_source = az.extract(idata, var_names = source_names+meta_names , combined = False)
-        idata_source = az.from_dict(posterior = {k: v.values for k, v in post_source.data_vars.items()})
-        idata_source.rename_vars(dict(zip(source_names,param_names)), inplace = True)
+        ds = az.extract(
+            idata, 
+            var_names=source_names + meta_names, 
+            combined=False, 
+            keep_dataset=True  # Guarantees an xarray.Dataset output
+        )
+
+        name_map = dict(zip(source_names, param_names))
+        ds_renamed = ds.rename_vars(name_map)
+
+        idata_source = az.from_dict({'posterior':ds_renamed})
 
         new_res.__delattr__('idata')
         new_res.__setattr__('idata', idata_source)
