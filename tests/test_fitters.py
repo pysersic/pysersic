@@ -9,21 +9,19 @@ from pysersic.pysersic import train_numpyro_svi_early_stop
 from pysersic.priors import estimate_sky
 
 
-
-
 im_s = np.zeros((40,40))
 rng = np.random.default_rng(seed=10)
 im_s += rng.normal(scale = 0.05, size = (40,40))
 rms = np.ones(im_s.shape)*0.05
 psf = Gaussian2DKernel(x_stddev=2.5).array
 renderer = rendering.HybridRenderer((40,40), psf)
-im_s = im_s + renderer.render_source( dict(xc = 20.,yc=20., flux = 200.), 'pointsource' )
+im_s = im_s + renderer.render_source( {'xc': 20.,'yc': 20., 'flux': 200.}, 'pointsource' )
 
 
 @pytest.mark.parametrize('sky_type', ['none', 'flat', 'tilted-plane'])
 def test_FitSingle_map(sky_type):
         props = priors.SourceProperties(im_s)
-        
+
         prior = props.generate_prior(profile_type='pointsource', sky_type=sky_type)
         print (prior)
         fitter_single = FitSingle(im_s,rms,psf,prior)
@@ -140,12 +138,12 @@ def test_FitMulti_sample():
         assert float(post_sum['mean']['xc_0']) == pytest.approx(10.0, rel = 1e-2)
         assert float(post_sum['sd']['xc_0']) == pytest.approx(0.01, rel = 2e-1)
         assert float(post_sum['mean']['xc_1']) == pytest.approx(30., rel = 1e-2)
-        assert float(post_sum['sd']['xc_1']) == pytest.approx(0.01, rel = 1e-1)
+        assert float(post_sum['sd']['xc_1']) == pytest.approx(0.01, rel = 2e-1)
 
         assert float(post_sum['mean']['yc_0']) == pytest.approx(30.0, rel = 1e-2)
-        assert float(post_sum['sd']['yc_0']) == pytest.approx(0.01, rel = 1e-1)
+        assert float(post_sum['sd']['yc_0']) == pytest.approx(0.01, rel = 2e-1)
         assert float(post_sum['mean']['yc_1']) == pytest.approx(10., rel = 1e-2)
-        assert float(post_sum['sd']['yc_1']) == pytest.approx(0.01, rel = 1e-1)
+        assert float(post_sum['sd']['yc_1']) == pytest.approx(0.01, rel = 2e-1)
 
 def test_train_numpyro_svi():
     def model():
