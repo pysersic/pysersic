@@ -812,4 +812,4 @@ def check_input_data(
     return True
 
 
-__version__ = "0.2.0"
+__version__ = "0.2.0"  # bump check
