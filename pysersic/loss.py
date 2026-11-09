@@ -141,9 +141,8 @@ def student_t_loss(mod: jnp.array,
     float
         Sampled loss function
     """
-    nu = 5.
     with handlers.mask(mask = mask):
-        loss =  sample(f"Loss{suffix}", dist.StudentT(nu,mod,jnp.sqrt((nu-2.)/2.)*rms), obs=data)    
+        loss =  sample(f"Loss{suffix}", dist.StudentT(nu,mod,jnp.sqrt((nu-2.)/nu)*rms), obs=data)    
     return loss
 
 def student_t_loss_free_sys(mod: jnp.array,
@@ -176,7 +175,7 @@ def student_t_loss_free_sys(mod: jnp.array,
     """
     sys_scatter_base = sample(f'sys_rms_base{suffix}', dist.TruncatedNormal(low = 0, scale = 1 ) )
     sys_scatter = deterministic(f'sys_rms{suffix}', sys_scatter_base*jnp.mean(rms))
-    rms_new = jnp.sqrt((nu-2.)/2.)*jnp.sqrt(rms**2 + sys_scatter**2)
+    rms_new = jnp.sqrt((nu-2.)/nu)*jnp.sqrt(rms**2 + sys_scatter**2)
 
     with handlers.mask(mask = mask):
         loss =  sample(f"Loss{suffix}", dist.StudentT(nu, mod, rms_new), obs=data)    
