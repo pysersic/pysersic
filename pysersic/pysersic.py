@@ -12,6 +12,7 @@ import pandas
 import tqdm
 from jax.random import PRNGKey, split
 from jax.typing import ArrayLike
+from jaxtyping import PRNGKeyArray
 from numpyro import deterministic, infer, optim
 from numpyro import distributions as dist
 from numpyro.handlers import condition, trace
@@ -625,7 +626,7 @@ class FitMulti(BaseFitter):
     def find_MAP(
         self,
         return_model: bool | None = True,
-        rkey: jax.random.PRNGKey | None = None,
+        rkey: PRNGKeyArray | None = None,
         purge_extra: bool | None = True,
     ):
         """Find the "best-fit" parameters as the maximum a-posteriori and return a dictionary with values for the parameters.
@@ -668,7 +669,7 @@ def train_numpyro_svi_early_stop(
     frac_lr_decrease: float | None = 0.1,
     patience: int | None = 100,
     optimizer: optim._NumPyroOptim | None = optim.Adam,
-    rkey: PRNGKey | None = None,
+    rkey: PRNGKeyArray | None = None,
 ) -> SVIRunResult:
     """Optimize a SVI model by training for multiple rounds with a deacreasing learning rate, and early stopping for each round
 
