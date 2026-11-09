@@ -1,8 +1,8 @@
 import copy
 import warnings
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from functools import partial
-from typing import Callable, Optional, Union
 
 import jax
 import jax.numpy as jnp
@@ -12,7 +12,8 @@ import pandas
 import tqdm
 from jax.random import PRNGKey, split
 from jax.typing import ArrayLike
-from numpyro import deterministic, infer, optim, distributions as dist
+from numpyro import deterministic, infer, optim
+from numpyro import distributions as dist
 from numpyro.handlers import condition, trace
 from numpyro.infer import SVI, Trace_ELBO
 from numpyro.infer.svi import SVIRunResult
@@ -20,14 +21,14 @@ from numpyro.infer.svi import SVIRunResult
 from .exceptions import KernelError, ShapeMatchError
 from .loss import gaussian_loss
 from .priors import PySersicMultiPrior, PySersicSourcePrior, base_profile_params
-from .rendering import BaseRenderer, HybridRenderer, base_profile_types
+from .rendering import BaseRenderer, HybridRenderer, base_profile_types, n_bound_dict
 from .results import PySersicResults
-from .rendering import n_bound_dict
+
 
 def get_numpyro_dist_bounds(distribution: dist.Distribution):
     "Calculate the bounds of a numpyro distribution"
     # if transformed distribution, check the base distribution and apply transforms
-    if isinstance(distribution,dist.TransformedDistribution):
+    if isinstance(distribution, dist.TransformedDistribution):
         base_dist = distribution.base_dist
         if base_dist.support == dist.constraints._Real():
             return -jnp.inf, jnp.inf
@@ -39,13 +40,12 @@ def get_numpyro_dist_bounds(distribution: dist.Distribution):
                 lb = t(lb)
                 ub = t(ub)
             return lb, ub
-    else: # if not, check constraints
+    else:  # if not, check constraints
         if distribution.support == dist.constraints._Real():
             return -jnp.inf, jnp.inf
         else:
             support = distribution.support
             return support.lower_bound, support.upper_bound
-        
 
 
 def identity(x: Callable) -> Callable:
@@ -62,10 +62,10 @@ class BaseFitter(ABC):
         data: ArrayLike,
         rms: ArrayLike,
         psf: ArrayLike,
-        mask: Optional[ArrayLike] = None,
-        loss_func: Optional[Callable] = gaussian_loss,
-        renderer: Optional[BaseRenderer] = HybridRenderer,
-        renderer_kwargs: Optional[dict] = {},
+        mask: ArrayLike | None = None,
+        loss_func: Callable | None = gaussian_loss,
+        renderer: BaseRenderer | None = HybridRenderer,
+        renderer_kwargs: dict | None = None,
     ) -> None:
         """Initialze BaseFitter class
 
@@ -86,7 +86,8 @@ class BaseFitter(ABC):
         renderer_kwargs : Optional[dict], optional
             Any additional arguments to pass to the renderer, by default {}
         """
-
+        if renderer_kwargs is None:
+            renderer_kwargs = {}
         self.loss_func = loss_func
 
         self.data = jnp.array(data.astype(np.float32))
@@ -94,7 +95,7 @@ class BaseFitter(ABC):
         self.mask = parse_mask(mask, self.data)
         self.rms, self.mask = self.clean_rms_array(self.rms, self.mask)
         self.psf = jnp.array(psf.astype(np.float32))
-        data_isgood = check_input_data(
+        _ = check_input_data(
             self.data, rms=self.rms, psf=self.psf, mask=jnp.logical_not(self.mask)
         )
         self.renderer = renderer(data.shape, self.psf, **renderer_kwargs)
@@ -133,28 +134,30 @@ class BaseFitter(ABC):
             Numpyro distribution object corresponding to the prior
         """
         self.prior_dict[parameter] = distribution
-    
+
     def _check_n_prior_bounds(self):
         for param, prior_dist in self.prior.dist_dict.items():
-            if 'n' in param and 'nu' not in param:
-                lb,ub = get_numpyro_dist_bounds(prior_dist)
+            if "n" in param and "nu" not in param:
+                lb, ub = get_numpyro_dist_bounds(prior_dist)
                 r_bounds = n_bound_dict[type(self.renderer)]
                 if lb < r_bounds[0] or ub > r_bounds[1]:
-                    raise AssertionError(f"The bounds of the prior for {param} = {lb}-{ub} are outside the bounds allowed for the renderer used: {type(self.renderer)} = {r_bounds}. Please adjust the priors or renderer, see documentation (https://pysersic.readthedocs.io/en/latest/rendering.html) for more details")
+                    raise AssertionError(
+                        f"The bounds of the prior for {param} = {lb}-{ub} are outside the bounds allowed for the renderer used: {type(self.renderer)} = {r_bounds}. Please adjust the priors or renderer, see documentation (https://pysersic.readthedocs.io/en/latest/rendering.html) for more details"
+                    )
             else:
                 continue
-    
+
     def sample(
         self,
         rkey: jax.random.PRNGKey,
         num_samples: int = 1000,
         num_warmup: int = 1000,
         num_chains: int = 2,
-        init_strategy: Optional[Callable] = infer.init_to_sample,
-        sampler_kwargs: Optional[dict] = {},
-        mcmc_kwargs: Optional[dict] = {},
-        return_model: Optional[bool] = True,
-        reparam_func: Optional[Union[Callable, str]] = identity,
+        init_strategy: Callable | None = infer.init_to_sample,
+        sampler_kwargs: dict | None = None,
+        mcmc_kwargs: dict | None = None,
+        return_model: bool | None = True,
+        reparam_func: Callable | str | None = identity,
     ) -> pandas.DataFrame:
         """Perform inference using a NUTS sampler
 
@@ -182,7 +185,10 @@ class BaseFitter(ABC):
         pandas.DataFrame
             ArviZ summary of posterior
         """
-
+        if sampler_kwargs is None:
+            sampler_kwargs = {}
+        if mcmc_kwargs is None:
+            mcmc_kwargs = {}
         model = self.build_model(return_model=return_model)
         if type(reparam_func) == (str):
             print(f"Running svi model for reparam: {reparam_func}")
@@ -222,13 +228,13 @@ class BaseFitter(ABC):
         autoguide: numpyro.infer.autoguide.AutoContinuous,
         method: str,
         rkey: jax.random.PRNGKey,
-        ELBO_loss: Optional[Callable] = infer.Trace_ELBO(5),
-        lr_init: Optional[int] = 1e-2,
-        num_round: Optional[int] = 3,
-        SVI_kwargs: Optional[dict] = {},
-        train_kwargs: Optional[dict] = {},
-        return_model: Optional[bool] = True,
-        num_sample: Optional[int] = 1_000,
+        ELBO_loss: Callable | None = None,
+        lr_init: int | None = 1e-2,
+        num_round: int | None = 3,
+        SVI_kwargs: dict | None = None,
+        train_kwargs: dict | None = None,
+        return_model: bool | None = True,
+        num_sample: int | None = 1_000,
     ) -> pandas.DataFrame:
         """
         Internal function to perform inference using stochastic variational inference.
@@ -261,6 +267,12 @@ class BaseFitter(ABC):
         pandas.DataFrame
             ArviZ summary of posterior
         """
+        if SVI_kwargs is None:
+            SVI_kwargs = {}
+        if train_kwargs is None:
+            train_kwargs = {}
+        if ELBO_loss is None:
+            ELBO_loss = infer.Trace_ELBO(5)
         model_cur = self.build_model(return_model=return_model)
         guide = autoguide(model_cur)
 
@@ -271,7 +283,11 @@ class BaseFitter(ABC):
             svi_kernel, rkey=rkey, lr_init=lr_init, num_round=num_round, **train_kwargs
         )
 
-        svi_res_dict = dict(guide=guide, model=model_cur, svi_result=numpyro_svi_result)
+        svi_res_dict = {
+            "guide": guide,
+            "model": model_cur,
+            "svi_result": numpyro_svi_result,
+        }
         self.svi_results = PySersicResults(
             data=self.data,
             rms=self.rms,
@@ -290,8 +306,8 @@ class BaseFitter(ABC):
     def find_MAP(
         self,
         rkey: jax.random.PRNGKey,
-        return_model: Optional[bool] = True,
-        purge_extra: Optional[bool] = True,
+        return_model: bool | None = True,
+        purge_extra: bool | None = True,
     ):
         """Find the "best-fit" parameters as the maximum a-posteriori and return a dictionary with values for the parameters.
 
@@ -311,20 +327,20 @@ class BaseFitter(ABC):
         autoguide_map = infer.autoguide.AutoDelta(
             model_cur, init_loc_fn=infer.init_to_median
         )
-        train_kwargs = dict(
-            lr_init=0.05,
-            num_round=3,
-            frac_lr_decrease=0.1,
-            patience=250,
-            optimizer=optim.Adam,
-            max_train=int(2e4),
-        )
+        train_kwargs = {
+            "lr_init": 0.05,
+            "num_round": 3,
+            "frac_lr_decrease": 0.1,
+            "patience": 250,
+            "optimizer": optim.Adam,
+            "max_train": int(2e4),
+        }
         svi_kernel = SVI(model_cur, autoguide_map, optim.Adam(0.01), loss=Trace_ELBO())
 
         res = train_numpyro_svi_early_stop(svi_kernel, rkey=rkey, **train_kwargs)
 
         use_dict = {}
-        for key in res.params.keys():
+        for key in res.params:
             pref = key.split("_auto_loc")[0]
             use_dict[pref] = res.params[key]
         trace_out = trace(condition(model_cur, use_dict)).get_trace()
@@ -354,7 +370,7 @@ class BaseFitter(ABC):
         rkey: jax.random.PRNGKey,
         method: str = "laplace",
         return_model: bool = True,
-        num_sample: Optional[int] = 1_000,
+        num_sample: int | None = 1_000,
     ) -> pandas.DataFrame:
         """Estimate the posterior using a method other than MCMC sampling. Generally faster than MCMC, but could be less accurate.
         Current Options are:
@@ -380,7 +396,7 @@ class BaseFitter(ABC):
         """
         assert method in ["laplace", "svi-flow", "svi-mvn"]
         if method == "laplace":
-            train_kwargs = dict(patience=250, max_train=20000)
+            train_kwargs = {"patience": 250, "max_train": 20000}
             guide_func = partial(
                 infer.autoguide.AutoLaplaceApproximation,
                 init_loc_fn=infer.init_to_median,
@@ -395,7 +411,7 @@ class BaseFitter(ABC):
                 num_sample=num_sample,
             )
         elif method == "svi-flow":
-            train_kwargs = dict(patience=500, max_train=20000)
+            train_kwargs = {"patience": 500, "max_train": 20000}
             guide_func = partial(
                 infer.autoguide.AutoBNAFNormal,
                 num_flows=1,
@@ -414,7 +430,7 @@ class BaseFitter(ABC):
                 num_sample=num_sample,
             )
         elif method == "svi-mvn":
-            train_kwargs = dict(patience=200, max_train=5000)
+            train_kwargs = {"patience": 200, "max_train": 5000}
             guide_func = partial(
                 infer.autoguide.AutoLowRankMultivariateNormal,
                 init_scale=5e-3,
@@ -449,10 +465,10 @@ class FitSingle(BaseFitter):
         rms: ArrayLike,
         psf: ArrayLike,
         prior: PySersicSourcePrior,
-        mask: Optional[ArrayLike] = None,
-        loss_func: Optional[Callable] = gaussian_loss,
-        renderer: Optional[BaseRenderer] = HybridRenderer,
-        renderer_kwargs: Optional[dict] = {},
+        mask: ArrayLike | None = None,
+        loss_func: Callable | None = gaussian_loss,
+        renderer: BaseRenderer | None = HybridRenderer,
+        renderer_kwargs: dict | None = None,
     ) -> None:
         """Initialze FitSingle class
 
@@ -475,7 +491,8 @@ class FitSingle(BaseFitter):
         renderer_kwargs : Optional[dict], optional
             Any additional arguments to pass to the renderer, by default {}
         """
-
+        if renderer_kwargs is None:
+            renderer_kwargs = {}
         super().__init__(
             data,
             rms,
@@ -490,7 +507,7 @@ class FitSingle(BaseFitter):
             raise AssertionError("Profile must be one of:", base_profile_types)
         self.profile_type_number = 0
         self.prior = prior
-        self._check_n_prior_bounds() # Check prior bounds for index based on renderer
+        self._check_n_prior_bounds()  # Check prior bounds for index based on renderer
 
     def build_model(self, return_model: bool = True) -> Callable:
         """Generate Numpyro model for the specified image, profile and priors
@@ -537,10 +554,10 @@ class FitMulti(BaseFitter):
         rms: ArrayLike,
         psf: ArrayLike,
         prior: PySersicMultiPrior,
-        mask: Optional[ArrayLike] = None,
-        loss_func: Optional[Callable] = gaussian_loss,
-        renderer: Optional[BaseRenderer] = HybridRenderer,
-        renderer_kwargs: Optional[dict] = {},
+        mask: ArrayLike | None = None,
+        loss_func: Callable | None = gaussian_loss,
+        renderer: BaseRenderer | None = HybridRenderer,
+        renderer_kwargs: dict | None = None,
     ) -> None:
         """Initialze FitMulti class
 
@@ -563,6 +580,8 @@ class FitMulti(BaseFitter):
         renderer_kwargs : Optional[dict], optional
             Any additional arguments to pass to the renderer, by default {}
         """
+        if renderer_kwargs is None:
+            renderer_kwargs = {}
         super().__init__(
             data,
             rms,
@@ -573,7 +592,7 @@ class FitMulti(BaseFitter):
             renderer_kwargs=renderer_kwargs,
         )
         self.prior = prior
-        self._check_n_prior_bounds() # Check prior bounds for index based on renderer
+        self._check_n_prior_bounds()  # Check prior bounds for index based on renderer
 
     def build_model(self, return_model: bool = True) -> Callable:
         """Generate Numpyro model for the specified image, profile and priors
@@ -605,9 +624,9 @@ class FitMulti(BaseFitter):
 
     def find_MAP(
         self,
-        return_model: Optional[bool] = True,
-        rkey: Optional[jax.random.PRNGKey] = jax.random.PRNGKey(3),
-        purge_extra: Optional[bool] = True,
+        return_model: bool | None = True,
+        rkey: jax.random.PRNGKey | None = None,
+        purge_extra: bool | None = True,
     ):
         """Find the "best-fit" parameters as the maximum a-posteriori and return a dictionary with values for the parameters.
 
@@ -623,6 +642,8 @@ class FitMulti(BaseFitter):
         dict
             dictionary with fit parameters and their values.
         """
+        if rkey is None:
+            rkey = jax.random.PRNGKey(3)
         raw_dict = super().find_MAP(
             return_model=return_model, rkey=rkey, purge_extra=purge_extra
         )
@@ -641,13 +662,13 @@ class FitMulti(BaseFitter):
 
 def train_numpyro_svi_early_stop(
     svi_class: SVI,
-    num_round: Optional[int] = 3,
-    max_train: Optional[int] = 5000,
-    lr_init: Optional[float] = 0.01,
-    frac_lr_decrease: Optional[float] = 0.1,
-    patience: Optional[int] = 100,
-    optimizer: Optional[optim._NumPyroOptim] = optim.Adam,
-    rkey: Optional[PRNGKey] = PRNGKey(10),
+    num_round: int | None = 3,
+    max_train: int | None = 5000,
+    lr_init: float | None = 0.01,
+    frac_lr_decrease: float | None = 0.1,
+    patience: int | None = 100,
+    optimizer: optim._NumPyroOptim | None = optim.Adam,
+    rkey: PRNGKey | None = None,
 ) -> SVIRunResult:
     """Optimize a SVI model by training for multiple rounds with a deacreasing learning rate, and early stopping for each round
 
@@ -675,6 +696,8 @@ def train_numpyro_svi_early_stop(
     SVIRunResult
         SVI Result class containing trained model
     """
+    if rkey is None:
+        rkey = PRNGKey(10)
     optim_init = optimizer(lr_init)
     svi_class.__setattr__("optim", optim_init)
 
@@ -789,4 +812,4 @@ def check_input_data(
     return True
 
 
-__version__ = "0.1.5"
+__version__ = "0.2.0"
