@@ -30,9 +30,9 @@ def test_point_source(pos):
     flux = 10.
     params = dict(flux = flux, xc = pos[0], yc = pos[1] )
     ims = get_models(params, 'pointsource')
-    assert pytest.approx(ims[0].sum(), rel = err_tol) == flux #pixel
-    assert pytest.approx(ims[1].sum(), rel = err_tol) == flux #fourier
-    assert pytest.approx(ims[2].sum(), rel = err_tol) == flux #hybrid
+    assert pytest.approx(float(ims[0].sum()), rel = err_tol) == flux #pixel
+    assert pytest.approx(float(ims[1].sum()), rel = err_tol) == flux #fourier
+    assert pytest.approx(float(ims[2].sum()), rel = err_tol) == flux #hybrid
 
 @pytest.mark.parametrize("pos", [(75.,75.),(75.5,75.5),])
 @pytest.mark.parametrize("re", [3.,5.]) 
@@ -107,4 +107,4 @@ def test_spergel(pos,re,nu_star,ellip,theta):
 def test_G_func(k,n):
     val_raw = G_raw(k,n)
     val = G(k,n)
-    assert pytest.approx(val_raw, 0.0001) == val
+    assert pytest.approx(float(val_raw), 0.0001) == float(val)
