@@ -8,6 +8,7 @@ authors = [
   {name = "Imad Pasha", email = "imad.pasha@yale.edu"},
   {name = "Tim Miller", email = "timothy.miller@northwestern.edu"}
 ]
+readme = "README.md"
 requires-python = ">=3.12"
 description = "A Tool for fitting sersic profiles in python"
 license = {file = "LICENSE"}
